@@ -15,7 +15,13 @@ interface AgentCardProps {
 // Map of agent IDs to their avatar images
 const AVATAR_IMAGES: Record<string, string> = {
     socrates: '/avatars/socrates.png',
-    // Add more as we generate them
+    skeptical_buyer: '/avatars/skeptical_buyer.png',
+    shark: '/avatars/shark.png',
+    brutal_operator: '/avatars/brutal_operator.png',
+    black_swan: '/avatars/black_swan.png',
+    futurist: '/avatars/futurist.png',
+    esoteric: '/avatars/esoteric.png',
+    archaeologist: '/avatars/archaeologist.png',
 };
 
 export default function AgentCard({
