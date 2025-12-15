@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Send, Loader2, ArrowLeft, MessageCircle, Settings, History, Menu, Plus, X, Edit } from 'lucide-react';
 import Link from 'next/link';
 import { DEFAULT_AGENTS, VERDICT_CONFIG, STANCE_CONFIG } from '@/lib/constants';
-import { AgentReport, FinalVerdict } from '@/types';
+import { AgentReport, FinalVerdict, AnalysisResult } from '@/types';
 import SettingsDropdown from '@/components/SettingsDropdown';
 import AgentCard from '@/components/AgentCard';
 import {
@@ -19,12 +19,7 @@ import {
 } from '@/lib/supabase';
 import EditAgentModal from '@/components/EditAgentModal';
 
-interface AnalysisResult {
-  agent_reports: AgentReport[];
-  verdict: FinalVerdict;
-  execution_time_seconds: number;
-  total_llm_calls: number;
-}
+
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -189,6 +184,47 @@ export default function Home() {
     return DEFAULT_AGENTS.find(a => a.name === name) || DEFAULT_AGENTS[0];
   };
 
+  // Handle selecting a conversation from history
+  const handleSelectConversation = async (id: string) => {
+    try {
+      setSidebarOpen(false);
+      const messages = await getMessages(id);
+
+      // Find analysis result
+      const analysisMsg = messages.find(m => m.metadata?.type === 'analysis_result');
+
+      if (analysisMsg) {
+        // Parse result from stringified content
+        try {
+          const data = JSON.parse(analysisMsg.content);
+          setResult(data);
+          setView('analysis');
+        } catch (e) {
+          console.error('Failed to parse analysis result:', e);
+          setView('home');
+        }
+      } else {
+        // Fallback: If no analysis result found, just go to home or maybe handle as chat?
+        // For now, we assume analysis result exists for valid conversations
+        setView('home');
+      }
+
+      // Find initial user input to populate
+      const userMsg = messages.find(m => m.role === 'user');
+      if (userMsg) {
+        setInput(userMsg.content);
+        // Also update title if needed
+      }
+
+      setCurrentConversationId(id);
+      // Reset active agent and chat messages when switching conversation
+      setActiveAgent(null);
+      setAgentMessages([]);
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    }
+  };
+
   // Sidebar component
   const Sidebar = () => (
     <div className={`fixed inset-y-0 left-0 z-50 w-72 bg-gray-50 border-r border-gray-200 transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static`}>
@@ -223,10 +259,7 @@ export default function Home() {
             conversations.map((conv) => (
               <button
                 key={conv.id}
-                onClick={() => {
-                  // TODO: Load conversation
-                  setSidebarOpen(false);
-                }}
+                onClick={() => handleSelectConversation(conv.id)}
                 className={`w-full text-left p-3 rounded-xl hover:bg-gray-100 transition-colors ${currentConversationId === conv.id ? 'bg-indigo-50 border border-indigo-200' : ''
                   }`}
               >
@@ -241,6 +274,7 @@ export default function Home() {
       </div>
     </div>
   );
+
 
   // HOME VIEW
   if (view === 'home') {

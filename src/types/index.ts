@@ -50,7 +50,7 @@ export interface FinalVerdict {
 }
 
 export interface AnalysisResult {
-    preflight: { valid: boolean; missing: string[] };
+    preflight?: { valid: boolean; missing: string[] };
     agent_reports: AgentReport[];
     verdict: FinalVerdict;
     execution_time_seconds: number;
