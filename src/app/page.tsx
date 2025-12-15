@@ -1,48 +1,50 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Send, Loader2, ArrowLeft, MessageCircle, Settings, History, Menu, Plus, X, Edit } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { DEFAULT_AGENTS, VERDICT_CONFIG, STANCE_CONFIG } from '@/lib/constants';
-import { AgentReport, FinalVerdict, AnalysisResult } from '@/types';
-import SettingsDropdown from '@/components/SettingsDropdown';
-import AgentCard from '@/components/AgentCard';
 import {
+  Menu, X, Plus, History, Settings, ArrowLeft, MessageCircle, Send,
+  Loader2, Edit, AlertCircle, CheckCircle2, AlertTriangle, Info, Bot
+} from 'lucide-react';
+
+import { STANCE_CONFIG, VERDICT_CONFIG, DEFAULT_AGENTS } from '@/lib/constants';
+import { chatWithAgent } from '@/lib/openai';
+import {
+  getAgents,
   createConversation,
   getConversations,
+  getConversation,
   addMessage,
   getMessages,
-  getAgents,
-  DbConversation,
-  DbMessage,
-  DbAgent
+  updateConversation,
+  DbAgent,
+  DbConversation
 } from '@/lib/supabase';
+import SettingsDropdown from '@/components/SettingsDropdown';
+import AgentCard from '@/components/AgentCard';
 import EditAgentModal from '@/components/EditAgentModal';
+import { AnalysisResult, Message, AgentReport } from '@/types';
+import { translations, Language } from '@/lib/translations';
 
-
-
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
 
 export default function Home() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [view, setView] = useState<'home' | 'analysis' | 'chat'>('home');
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
-  const [agentMessages, setAgentMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [view, setView] = useState<'home' | 'analysis' | 'chat'>('home');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Sidebar state
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversations, setConversations] = useState<DbConversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
 
   // Settings state
-  const [language, setLanguage] = useState('ru');
+  const [uiLanguage, setUiLanguage] = useState<Language>('ru');
+  const [language, setLanguage] = useState('ru'); // Output language
   const [model, setModel] = useState('gpt-4o');
   const [theme, setTheme] = useState('system'); // 'light' | 'dark' | 'system'
 
@@ -52,13 +54,23 @@ export default function Home() {
 
   // Load settings from localStorage
   useEffect(() => {
+    const savedUiLang = localStorage.getItem('roundtable-ui-language');
     const savedLang = localStorage.getItem('roundtable-language');
     const savedModel = localStorage.getItem('roundtable-model');
     const savedTheme = localStorage.getItem('roundtable-theme');
+
+    // Validate UI language
+    if (savedUiLang && ['en', 'ru', 'ka'].includes(savedUiLang)) {
+      setUiLanguage(savedUiLang as Language);
+    }
+
     if (savedLang) setLanguage(savedLang);
     if (savedModel) setModel(savedModel);
     if (savedTheme) setTheme(savedTheme);
   }, []);
+
+  // Translations
+  const t = translations[uiLanguage];
 
   // Apply theme with system listener
   useEffect(() => {
@@ -98,7 +110,7 @@ export default function Home() {
         setAgents(data);
       } else {
         // Fallback to defaults if DB is empty (should not happen if initialized)
-        // setAgents(DEFAULT_AGENTS); 
+        // setAgents(DEFAULT_AGENTS);
       }
     } catch (error) {
       console.error('Failed to load agents:', error);
@@ -154,23 +166,35 @@ export default function Home() {
 
   const handleAgentClick = async (agentId: string, report: AgentReport) => {
     setActiveAgent(agentId);
-    setAgentMessages([
-      { role: 'assistant', content: report.insights.join('\n\n') }
+    setMessages([
+      {
+        id: 'init-insight',
+        role: 'assistant',
+        content: report.insights.join('\n\n'),
+        conversation_id: currentConversationId || 'temp',
+        created_at: new Date().toISOString()
+      }
     ]);
     setView('chat');
   };
 
   const handleChatSend = async () => {
     if (!chatInput.trim() || !activeAgent) return;
-    const newMessages = [...agentMessages, { role: 'user' as const, content: chatInput }];
-    setAgentMessages(newMessages);
+    const newUserMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: chatInput,
+      conversation_id: currentConversationId || 'temp',
+      created_at: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, newUserMessage]);
     setChatInput('');
     setChatLoading(true);
 
     try {
       // Save user message to Supabase
       if (currentConversationId) {
-        await addMessage(currentConversationId, 'user', chatInput, activeAgent);
+        await addMessage(currentConversationId, 'user', chatInput, activeAgent || undefined);
       }
 
       const res = await fetch('/api/chat', {
@@ -178,19 +202,27 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: activeAgent,
-          messages: newMessages,
+          messages: [...messages, newUserMessage].map(m => ({ role: m.role, content: m.content })),
           language: 'ru'
         }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
+      const assistantResponse = data.response;
+
       // Save agent response to Supabase
       if (currentConversationId) {
-        await addMessage(currentConversationId, 'agent', data.response, activeAgent);
+        await addMessage(currentConversationId, 'assistant', assistantResponse, activeAgent || undefined);
       }
 
-      setAgentMessages([...newMessages, { role: 'assistant', content: data.response }]);
+      setMessages(prev => [...prev, {
+        id: Date.now().toString() + '-response',
+        role: 'assistant',
+        content: assistantResponse,
+        conversation_id: currentConversationId || 'temp',
+        created_at: new Date().toISOString()
+      }]);
     } catch (error) {
       console.error(error);
     } finally {
@@ -202,7 +234,7 @@ export default function Home() {
     setInput('');
     setResult(null);
     setActiveAgent(null);
-    setAgentMessages([]);
+    setMessages([]);
     setCurrentConversationId(null);
     setView('home');
     setSidebarOpen(false);
@@ -216,10 +248,10 @@ export default function Home() {
   const handleSelectConversation = async (id: string) => {
     try {
       setSidebarOpen(false);
-      const messages = await getMessages(id);
+      const msgs = await getMessages(id);
 
       // Find analysis result
-      const analysisMsg = messages.find(m => m.metadata?.type === 'analysis_result');
+      const analysisMsg = msgs.find(m => m.metadata?.type === 'analysis_result');
 
       if (analysisMsg) {
         // Parse result from stringified content
@@ -238,7 +270,7 @@ export default function Home() {
       }
 
       // Find initial user input to populate
-      const userMsg = messages.find(m => m.role === 'user');
+      const userMsg = msgs.find(m => m.role === 'user');
       if (userMsg) {
         setInput(userMsg.content);
         // Also update title if needed
@@ -247,7 +279,7 @@ export default function Home() {
       setCurrentConversationId(id);
       // Reset active agent and chat messages when switching conversation
       setActiveAgent(null);
-      setAgentMessages([]);
+      setMessages(msgs.filter(m => m.role !== 'system') as Message[]);
     } catch (error) {
       console.error('Failed to load conversation:', error);
     }
@@ -261,7 +293,7 @@ export default function Home() {
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
           <h2 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <History className="w-5 h-5" />
-            История
+            {t.history}
           </h2>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded">
             <X className="w-5 h-5" />
@@ -275,14 +307,14 @@ export default function Home() {
             className="w-full flex items-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
           >
             <Plus className="w-5 h-5" />
-            Новый анализ
+            {t.newAnalysis}
           </button>
         </div>
 
         {/* Conversations list */}
         <div className="flex-1 overflow-auto p-3 space-y-2">
           {conversations.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">Нет сохранённых разговоров</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">{t.noConversations}</p>
           ) : (
             conversations.map((conv) => (
               <button
@@ -325,9 +357,11 @@ export default function Home() {
               <h1 className="font-semibold text-gray-900 dark:text-gray-100">🏰 RoundTable</h1>
             </div>
             <SettingsDropdown
+              uiLanguage={uiLanguage}
               language={language}
               model={model}
               theme={theme}
+              onUiLanguageChange={(l) => { setUiLanguage(l); localStorage.setItem('roundtable-ui-language', l); }}
               onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('roundtable-language', l); }}
               onModelChange={(m) => { setModel(m); localStorage.setItem('roundtable-model', m); }}
               onThemeChange={(t) => { setTheme(t); localStorage.setItem('roundtable-theme', t); }}
@@ -338,12 +372,14 @@ export default function Home() {
           <div className="hidden lg:flex items-center justify-end gap-2 p-4 border-b border-gray-200 dark:border-gray-800">
             <Link href="/agents" className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
               <Edit className="w-4 h-4" />
-              <span>Редактировать</span>
+              <span>{t.edit}</span>
             </Link>
             <SettingsDropdown
+              uiLanguage={uiLanguage}
               language={language}
               model={model}
               theme={theme}
+              onUiLanguageChange={(l) => { setUiLanguage(l); localStorage.setItem('roundtable-ui-language', l); }}
               onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('roundtable-language', l); }}
               onModelChange={(m) => { setModel(m); localStorage.setItem('roundtable-model', m); }}
               onThemeChange={(t) => { setTheme(t); localStorage.setItem('roundtable-theme', t); }}
@@ -354,18 +390,18 @@ export default function Home() {
             {/* Header */}
             <div className="text-center mb-12">
               <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100 mb-2">🏰 RoundTable</h1>
-              <p className="text-gray-500 dark:text-gray-400">Your Virtual Board of Advisors</p>
+              <p className="text-gray-500 dark:text-gray-400">{t.subtitle}</p>
             </div>
 
             {/* Input Area */}
             <div className="bg-gray-50 dark:bg-gray-900 rounded-2xl p-8 mb-8">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                Опиши свою идею
+                {t.describeIdea}
               </label>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Например: Хочу открыть грузинскую пекарню в Германии..."
+                placeholder={t.placeholder}
                 className="w-full h-40 p-4 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-xl resize-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
               />
               <button
@@ -376,12 +412,12 @@ export default function Home() {
                 {loading ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    Анализируем...
+                    {t.analyzing}
                   </>
                 ) : (
                   <>
                     <Send className="w-5 h-5" />
-                    Запустить анализ
+                    {t.startAnalysis}
                   </>
                 )}
               </button>
@@ -391,7 +427,7 @@ export default function Home() {
             <div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
                 <Settings className="w-5 h-5" />
-                Круглый стол (10 советников)
+                {t.roundTableTitle}
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 {agents.map((agent) => (
@@ -412,6 +448,7 @@ export default function Home() {
                 <EditAgentModal
                   agent={editingAgent}
                   isOpen={!!editingAgent}
+                  uiLanguage={uiLanguage}
                   onClose={() => setEditingAgent(null)}
                   onSave={loadAgents}
                 />
@@ -449,7 +486,7 @@ export default function Home() {
               className="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 mb-6"
             >
               <ArrowLeft className="w-4 h-4" />
-              Новый анализ
+              {t.newAnalysis}
             </button>
 
             {/* Verdict Card */}
@@ -467,13 +504,13 @@ export default function Home() {
                 </div>
                 <div className="ml-auto text-right">
                   <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{result.verdict.confidence}%</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">confidence</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">{t.confidence}</div>
                 </div>
               </div>
             </div>
             <p className="text-gray-700 dark:text-gray-300 mb-4">{result.verdict.core_conflict}</p>
             <div>
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">📋 План действий:</h3>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">📋 {t.actionPlan}</h3>
               <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
                 {result.verdict.action_plan.map((action, i) => (
                   <li key={i}>{action}</li>
@@ -487,8 +524,8 @@ export default function Home() {
 
           {/* Agent Reports */}
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            🏰 Мнения советников
-            <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">(нажми для чата)</span>
+            🏰 {t.advisorsOpinions}
+            <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">{t.clickToChat}</span>
           </h2>
           <div className="space-y-3">
             {result.agent_reports.map((report) => {
@@ -506,7 +543,7 @@ export default function Home() {
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-medium text-gray-900 dark:text-gray-100">{report.agent_name}</span>
                         <span style={{ color: stanceConfig.color }}>{stanceConfig.emoji} {report.stance}</span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Risk: {report.risk_score}%</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">{t.risk}: {report.risk_score}%</span>
                       </div>
                       {report.insights.map((insight, i) => (
                         <p key={i} className="text-sm text-gray-600 dark:text-gray-400 mb-1">└─ {insight}</p>
@@ -557,7 +594,7 @@ export default function Home() {
 
           {/* Messages */}
           <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
-            {agentMessages.map((msg, i) => (
+            {messages.map((msg, i) => (
               <div
                 key={i}
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -589,7 +626,7 @@ export default function Home() {
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleChatSend()}
-                placeholder="Задай вопрос..."
+                placeholder={t.askQuestion}
                 className="flex-1 px-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
               />
               <button
