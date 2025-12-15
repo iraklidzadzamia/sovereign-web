@@ -5,7 +5,8 @@ import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import {
   Menu, X, Plus, History, Settings, ArrowLeft, MessageCircle, Send,
-  Loader2, Edit, AlertCircle, CheckCircle2, AlertTriangle, Info, Bot
+  Loader2, Edit, AlertCircle, CheckCircle2, AlertTriangle, Info, Bot,
+  Copy, Trash2, Pencil, Check
 } from 'lucide-react';
 
 import { STANCE_CONFIG, VERDICT_CONFIG, DEFAULT_AGENTS, JUDGE_AGENT } from '@/lib/constants';
@@ -43,6 +44,10 @@ export default function Home() {
   // Sidebar state
   const [conversations, setConversations] = useState<DbConversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [hiddenConversations, setHiddenConversations] = useState<string[]>([]);
+  const [editingTitle, setEditingTitle] = useState<string | null>(null);
+  const [newTitle, setNewTitle] = useState('');
+  const [copied, setCopied] = useState(false);
 
   // Settings state
   const [uiLanguage, setUiLanguage] = useState<Language>('ru');
@@ -61,6 +66,7 @@ export default function Home() {
     const savedModel = localStorage.getItem('roundtable-model');
     const savedTheme = localStorage.getItem('roundtable-theme');
     const savedConversationId = localStorage.getItem('roundtable-conversation-id');
+    const savedHidden = localStorage.getItem('roundtable-hidden-conversations');
 
     // Validate UI language
     if (savedUiLang && ['en', 'ru', 'ka'].includes(savedUiLang)) {
@@ -70,6 +76,7 @@ export default function Home() {
     if (savedLang) setLanguage(savedLang);
     if (savedModel) setModel(savedModel);
     if (savedTheme) setTheme(savedTheme);
+    if (savedHidden) setHiddenConversations(JSON.parse(savedHidden));
 
     // Restore last conversation on page load
     if (savedConversationId) {
@@ -307,6 +314,72 @@ export default function Home() {
     setSidebarOpen(false);
   };
 
+  // Copy all analysis + chat to clipboard
+  const handleCopyAll = async () => {
+    if (!result) return;
+
+    let text = `# Анализ идеи\n\n`;
+    text += `**Оригинальный запрос:**\n${originalInput}\n\n`;
+    text += `---\n\n`;
+    text += `## 🏛️ Вердикт: ${result.verdict.signal} (${result.verdict.confidence}%)\n\n`;
+    text += `**Конфликт:** ${result.verdict.core_conflict}\n\n`;
+    text += `**Обоснование:** ${result.verdict.reasoning}\n\n`;
+    text += `**План действий:**\n${result.verdict.action_plan.map((a, i) => `${i + 1}. ${a}`).join('\n')}\n\n`;
+    text += `---\n\n## 👥 Мнения советников\n\n`;
+
+    for (const report of result.agent_reports) {
+      text += `### ${report.agent_name} (${report.stance}, Риск: ${report.risk_score}%)\n`;
+      text += `${report.one_liner}\n\n`;
+      text += `**Инсайты:**\n${report.insights.map(i => `- ${i}`).join('\n')}\n\n`;
+      if (report.assumptions?.length) {
+        text += `**Допущения:** ${report.assumptions.join('; ')}\n`;
+      }
+      if (report.unknowns?.length) {
+        text += `**Неизвестные:** ${report.unknowns.join('; ')}\n`;
+      }
+      if (report.next_step) {
+        text += `**Следующий шаг:** ${report.next_step}\n`;
+      }
+      text += `\n`;
+    }
+
+    if (messages.length > 0) {
+      text += `---\n\n## 💬 Диалог\n\n`;
+      for (const msg of messages) {
+        text += `**${msg.role === 'user' ? 'Вы' : 'AI'}:** ${msg.content}\n\n`;
+      }
+    }
+
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Rename conversation
+  const handleRenameConversation = async (id: string) => {
+    if (!newTitle.trim()) return;
+    try {
+      await updateConversation(id, { title: newTitle });
+      setConversations(prev => prev.map(c =>
+        c.id === id ? { ...c, title: newTitle } : c
+      ));
+      setEditingTitle(null);
+      setNewTitle('');
+    } catch (error) {
+      console.error('Failed to rename:', error);
+    }
+  };
+
+  // Hide conversation (soft delete - only UI, stays in Supabase)
+  const handleHideConversation = (id: string) => {
+    const updated = [...hiddenConversations, id];
+    setHiddenConversations(updated);
+    localStorage.setItem('roundtable-hidden-conversations', JSON.stringify(updated));
+    if (currentConversationId === id) {
+      handleNewConversation();
+    }
+  };
+
   const getAgentConfig = (name: string) => {
     return DEFAULT_AGENTS.find(a => a.name === name) || DEFAULT_AGENTS[0];
   };
@@ -380,22 +453,70 @@ export default function Home() {
 
         {/* Conversations list */}
         <div className="flex-1 overflow-auto p-3 space-y-2">
-          {conversations.length === 0 ? (
+          {conversations.filter(c => !hiddenConversations.includes(c.id)).length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">{t.noConversations}</p>
           ) : (
-            conversations.map((conv) => (
-              <button
-                key={conv.id}
-                onClick={() => handleSelectConversation(conv.id)}
-                className={`w-full text-left p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${currentConversationId === conv.id ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800' : ''
-                  }`}
-              >
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{conv.title}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {new Date(conv.created_at).toLocaleDateString('ru-RU')}
+            conversations
+              .filter(c => !hiddenConversations.includes(c.id))
+              .map((conv) => (
+                <div
+                  key={conv.id}
+                  className={`group relative p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${currentConversationId === conv.id ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800' : ''}`}
+                >
+                  {editingTitle === conv.id ? (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newTitle}
+                        onChange={(e) => setNewTitle(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleRenameConversation(conv.id)}
+                        className="flex-1 px-2 py-1 text-sm border rounded dark:bg-gray-800 dark:border-gray-700"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleRenameConversation(conv.id)}
+                        className="p-1 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 rounded"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => { setEditingTitle(null); setNewTitle(''); }}
+                        className="p-1 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div
+                        onClick={() => handleSelectConversation(conv.id)}
+                        className="cursor-pointer"
+                      >
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate pr-16">{conv.title}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          {new Date(conv.created_at).toLocaleDateString('ru-RU')}
+                        </div>
+                      </div>
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingTitle(conv.id); setNewTitle(conv.title); }}
+                          className="p-1 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                          title="Переименовать"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleHideConversation(conv.id); }}
+                          className="p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
+                          title="Скрыть"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
-              </button>
-            ))
+              ))
           )}
         </div>
       </div>
@@ -588,13 +709,26 @@ export default function Home() {
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 ⏱️ {result.execution_time_seconds.toFixed(1)}s | 🔄 {result.total_llm_calls} LLM calls
               </span>
-              <button
-                onClick={handleJudgeClick}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors text-sm font-medium"
-              >
-                <MessageCircle className="w-4 h-4" />
-                {t.chatWithJudge || 'Chat with Judge'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCopyAll}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-medium ${copied
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                    }`}
+                  title="Скопировать весь анализ"
+                >
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {copied ? 'Скопировано!' : 'Копировать'}
+                </button>
+                <button
+                  onClick={handleJudgeClick}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors text-sm font-medium"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  {t.chatWithJudge || 'Chat with Judge'}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -722,6 +856,18 @@ export default function Home() {
               >
                 <Send className="w-5 h-5" />
               </button>
+              {result && (
+                <button
+                  onClick={handleCopyAll}
+                  className={`px-4 py-3 rounded-xl transition-colors flex items-center gap-2 ${copied
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                    }`}
+                  title="Скопировать весь анализ"
+                >
+                  {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                </button>
+              )}
             </div>
           </div>
         </div>
