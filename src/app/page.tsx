@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { DEFAULT_AGENTS, VERDICT_CONFIG, STANCE_CONFIG } from '@/lib/constants';
 import { AgentReport, FinalVerdict } from '@/types';
 import SettingsDropdown from '@/components/SettingsDropdown';
+import AgentCard from '@/components/AgentCard';
 import {
   createConversation,
   getConversations,
@@ -304,16 +305,15 @@ export default function Home() {
                 <Settings className="w-5 h-5" />
                 Круглый стол (10 советников)
               </h2>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 {DEFAULT_AGENTS.map((agent) => (
-                  <div
+                  <AgentCard
                     key={agent.id}
-                    className="bg-gray-50 rounded-xl p-4 text-center hover:bg-gray-100 transition-colors cursor-pointer"
-                  >
-                    <div className="text-2xl mb-1">{agent.emoji}</div>
-                    <div className="text-sm font-medium text-gray-900">{agent.name}</div>
-                    <div className="text-xs text-gray-500 mt-1 line-clamp-2">{agent.description}</div>
-                  </div>
+                    id={agent.id}
+                    name={agent.name}
+                    description={agent.description}
+                    emoji={agent.emoji}
+                  />
                 ))}
               </div>
             </div>
