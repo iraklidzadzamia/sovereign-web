@@ -222,14 +222,14 @@ export default function Home() {
             <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-gray-100 rounded-lg">
               <Menu className="w-6 h-6" />
             </button>
-            <h1 className="font-semibold text-gray-900">🏛️ The Sovereign</h1>
+            <h1 className="font-semibold text-gray-900">🏰 RoundTable</h1>
           </div>
 
           <div className="max-w-3xl mx-auto px-6 py-12">
             {/* Header */}
             <div className="text-center mb-12">
-              <h1 className="text-4xl font-bold text-gray-900 mb-2">🏛️ The Sovereign</h1>
-              <p className="text-gray-500">Multi-Agent Strategic Decision Engine</p>
+              <h1 className="text-4xl font-bold text-gray-900 mb-2">🏰 RoundTable</h1>
+              <p className="text-gray-500">Your Virtual Board of Advisors</p>
             </div>
 
             {/* Input Area */}
@@ -266,7 +266,7 @@ export default function Home() {
             <div>
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Settings className="w-5 h-5" />
-                Совет директоров (10 агентов)
+                Круглый стол (10 советников)
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {DEFAULT_AGENTS.map((agent) => (
@@ -350,7 +350,7 @@ export default function Home() {
 
             {/* Agent Reports */}
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              🏛️ Мнения агентов
+              🏰 Мнения советников
               <span className="text-sm font-normal text-gray-500 ml-2">(нажми для чата)</span>
             </h2>
             <div className="space-y-3">
@@ -427,8 +427,8 @@ export default function Home() {
               >
                 <div
                   className={`max-w-[80%] rounded-2xl px-4 py-3 ${msg.role === 'user'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-gray-100 text-gray-900'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-900'
                     }`}
                 >
                   {msg.content}
