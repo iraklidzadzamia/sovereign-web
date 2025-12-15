@@ -75,16 +75,24 @@ RULES:
     const content = response.choices[0].message.content || '{}';
     const raw = JSON.parse(content);
 
+    // Helper to ensure array contains only strings
+    const toStringArray = (arr: unknown, max: number): string[] => {
+        if (!Array.isArray(arr)) return [];
+        return arr.filter((x): x is string => typeof x === 'string').slice(0, max);
+    };
+
     // Validate and normalize the response
     return {
         agent_name: raw.agent_name || agent.name,
         stance: ['YES', 'NO', 'MIXED'].includes(raw.stance) ? raw.stance : 'MIXED',
         risk_score: typeof raw.risk_score === 'number' ? Math.min(100, Math.max(0, raw.risk_score)) : 50,
         confidence: ['LOW', 'MEDIUM', 'HIGH'].includes(raw.confidence) ? raw.confidence : 'MEDIUM',
-        one_liner: raw.one_liner || raw.insights?.[0] || 'No summary provided',
-        insights: Array.isArray(raw.insights) ? raw.insights.slice(0, 5) : [],
-        assumptions: Array.isArray(raw.assumptions) ? raw.assumptions.slice(0, 3) : undefined,
-        unknowns: Array.isArray(raw.unknowns) ? raw.unknowns.slice(0, 3) : undefined,
+        one_liner: typeof raw.one_liner === 'string' && raw.one_liner
+            ? raw.one_liner
+            : toStringArray(raw.insights, 1)[0] || 'No summary provided',
+        insights: toStringArray(raw.insights, 5),
+        assumptions: toStringArray(raw.assumptions, 3).length > 0 ? toStringArray(raw.assumptions, 3) : undefined,
+        unknowns: toStringArray(raw.unknowns, 3).length > 0 ? toStringArray(raw.unknowns, 3) : undefined,
         next_step: typeof raw.next_step === 'string' ? raw.next_step : undefined,
     };
 }
@@ -137,28 +145,18 @@ CRITICAL RULES:
 
 PERSONALITY: Decisive but transparent. No theatrics. Evidence-based.` + getLanguageInstruction(language);
 
-    // Build structured summary with full report data (not just insights[0])
-    const structuredReports = reports.map(r => {
-        const rAny = r as unknown as Record<string, unknown>;
-        const report: Record<string, unknown> = {
-            agent: r.agent_name,
-            stance: r.stance,
-            risk_score: r.risk_score,
-            one_liner: rAny.one_liner || r.insights[0] || 'No summary',
-            insights: r.insights,
-        };
-        // Include optional fields if they exist
-        if (rAny.assumptions) {
-            report.assumptions = rAny.assumptions;
-        }
-        if (rAny.unknowns) {
-            report.unknowns = rAny.unknowns;
-        }
-        if (rAny.next_step) {
-            report.next_step = rAny.next_step;
-        }
-        return report;
-    });
+    // Build structured summary with full report data
+    const structuredReports = reports.map(r => ({
+        agent: r.agent_name,
+        stance: r.stance,
+        risk_score: r.risk_score,
+        confidence: r.confidence,
+        one_liner: r.one_liner,
+        insights: r.insights,
+        assumptions: r.assumptions,
+        unknowns: r.unknowns,
+        next_step: r.next_step,
+    }));
 
     const userPrompt = `=== ORIGINAL IDEA ===
 ${userInput.slice(0, 1500)}

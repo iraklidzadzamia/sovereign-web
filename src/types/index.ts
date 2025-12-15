@@ -20,7 +20,7 @@ export interface Message {
 export interface MessageMetadata {
     stance?: 'YES' | 'NO' | 'MIXED';
     risk_score?: number;
-    confidence?: number;
+    confidence?: 'LOW' | 'MEDIUM' | 'HIGH';
     signal?: 'GREEN' | 'YELLOW' | 'SOFT_RED' | 'HARD_RED';
 }
 
