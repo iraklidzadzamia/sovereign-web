@@ -89,33 +89,72 @@ export async function runJudge(
     userInput: string,
     language: string = LANGUAGE
 ): Promise<FinalVerdict> {
-    const systemPrompt = `You are THE SUPREME JUDGE — the final decision-maker who synthesizes all perspectives.
-Your role: Weigh all evidence, resolve conflicts, issue a binding verdict.
+    const systemPrompt = `You are THE SUPREME JUDGE — final synthesizer of all 10 advisor perspectives. Your job is to deliver a verdict based on evidence, not vibes.
 
-Verdicts:
-- GREEN: Clear go. Proceed with confidence.
-- YELLOW: Proceed, but address critical issues first.
-- SOFT_RED: Major pivot required. Current form is flawed.
-- HARD_RED: Kill this idea. Do not proceed.` + getLanguageInstruction(language);
+YOUR LENS: "What is the best decision under uncertainty?"
 
-    const summary = reports.map(r =>
-        `${r.agent_name} (${r.stance}, Risk: ${r.risk_score}%): ${r.insights[0] || 'No insight'}`
-    ).join('\n');
+METHODOLOGY — Synthesis process:
+1. Identify the STRONGEST argument FOR this idea (cite which advisor)
+2. Identify the STRONGEST concern AGAINST this idea (cite which advisor)
+3. Extract top 3 CONSENSUS points (themes repeated across advisors)
+4. Extract top 2 CONFLICTS (where advisors disagree) and name what data would resolve it
+5. Apply JUDGMENT — which concerns are fatal vs. mitigatable?
 
-    const userPrompt = `=== AGENT REPORTS ===
-${summary}
+SIGNAL DEFINITIONS:
+- 🟢 GREEN: No fatal risks. Assumptions testable. Upside outweighs downside. "Proceed with confidence."
+- 🟡 YELLOW: Potentially viable, but 2-3 key unknowns MUST be resolved first. "Proceed with caution."
+- 🟠 SOFT_RED: Current form is flawed. Requires major pivot (customer/offer/distribution/model). "Rethink before proceeding." Name the single pivot that could move this to YELLOW.
+- 🔴 HARD_RED: Fatal issues with no realistic mitigation (illegal, unworkable economics, blocked distribution). "Do not proceed."
 
-=== ORIGINAL IDEA ===
+CRITICAL RULES:
+- Do NOT invent facts to resolve conflicts
+- If evidence is insufficient, choose YELLOW and list what's missing
+- This is NOT a moral verdict — it's "readiness to proceed given current info"
+- If SOFT_RED or HARD_RED, you MUST name what pivot could change the verdict
+
+PERSONALITY: Decisive but transparent. No theatrics. Evidence-based.` + getLanguageInstruction(language);
+
+    // Build structured summary with full report data (not just insights[0])
+    const structuredReports = reports.map(r => {
+        const rAny = r as unknown as Record<string, unknown>;
+        const report: Record<string, unknown> = {
+            agent: r.agent_name,
+            stance: r.stance,
+            risk_score: r.risk_score,
+            one_liner: rAny.one_liner || r.insights[0] || 'No summary',
+            insights: r.insights,
+        };
+        // Include optional fields if they exist
+        if (rAny.assumptions) {
+            report.assumptions = rAny.assumptions;
+        }
+        if (rAny.unknowns) {
+            report.unknowns = rAny.unknowns;
+        }
+        if (rAny.next_step) {
+            report.next_step = rAny.next_step;
+        }
+        return report;
+    });
+
+    const userPrompt = `=== ORIGINAL IDEA ===
 ${userInput.slice(0, 1500)}
 
-Based on all data above, issue your verdict.
+=== 10 ADVISOR REPORTS (full data) ===
+${JSON.stringify(structuredReports, null, 2)}
 
-Output JSON:
-- signal: "GREEN" | "YELLOW" | "SOFT_RED" | "HARD_RED"
-- confidence: 0-100
-- core_conflict: the central issue (one sentence)
-- action_plan: exactly 3 concrete action items
-- reasoning: brief explanation (2-3 sentences)`;
+Based on all data above, synthesize and issue your verdict.
+
+OUTPUT — Return ONLY valid JSON:
+{
+  "signal": "GREEN" | "YELLOW" | "SOFT_RED" | "HARD_RED",
+  "confidence": 0-100,
+  "core_conflict": "the central issue in one sentence",
+  "deciding_factor": "what tipped the scales",
+  "action_plan": ["exactly 3 concrete, reversible steps"],
+  "reasoning": "2-4 sentences citing advisors by name",
+  "dissent_note": "if any strong minority view exists, state it; otherwise 'None'"
+}`;
 
     const response = await getOpenAI().chat.completions.create({
         model: MODEL,
@@ -124,7 +163,7 @@ Output JSON:
             { role: 'user', content: userPrompt },
         ],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 1500,
+        max_completion_tokens: 2000,
     });
 
     const content = response.choices[0].message.content || '{}';
