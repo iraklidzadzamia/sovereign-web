@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
 import {
   Menu, X, Plus, History, Settings, ArrowLeft, MessageCircle, Send,
   Loader2, Edit, AlertCircle, CheckCircle2, AlertTriangle, Info, Bot
@@ -645,7 +646,15 @@ export default function Home() {
                     : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
                     }`}
                 >
-                  {msg.content}
+                  {msg.role === 'user' ? (
+                    msg.content
+                  ) : (
+                    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2">
+                      <ReactMarkdown>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
