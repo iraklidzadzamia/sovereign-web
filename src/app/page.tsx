@@ -12,9 +12,12 @@ import {
   getConversations,
   addMessage,
   getMessages,
+  getAgents,
   DbConversation,
-  DbMessage
+  DbMessage,
+  DbAgent
 } from '@/lib/supabase';
+import EditAgentModal from '@/components/EditAgentModal';
 
 interface AnalysisResult {
   agent_reports: AgentReport[];
@@ -47,6 +50,10 @@ export default function Home() {
   const [language, setLanguage] = useState('ru');
   const [model, setModel] = useState('gpt-4o');
 
+  // Agents state
+  const [agents, setAgents] = useState<DbAgent[]>([]);
+  const [editingAgent, setEditingAgent] = useState<DbAgent | null>(null);
+
   // Load settings from localStorage
   useEffect(() => {
     const savedLang = localStorage.getItem('roundtable-language');
@@ -55,10 +62,25 @@ export default function Home() {
     if (savedModel) setModel(savedModel);
   }, []);
 
-  // Load conversations on mount
+  // Load conversations and agents on mount
   useEffect(() => {
     loadConversations();
+    loadAgents();
   }, []);
+
+  const loadAgents = async () => {
+    try {
+      const data = await getAgents();
+      if (data && data.length > 0) {
+        setAgents(data);
+      } else {
+        // Fallback to defaults if DB is empty (should not happen if initialized)
+        // setAgents(DEFAULT_AGENTS); 
+      }
+    } catch (error) {
+      console.error('Failed to load agents:', error);
+    }
+  };
 
   const loadConversations = async () => {
     try {
@@ -306,16 +328,28 @@ export default function Home() {
                 Круглый стол (10 советников)
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                {DEFAULT_AGENTS.map((agent) => (
+                {agents.map((agent) => (
                   <AgentCard
                     key={agent.id}
                     id={agent.id}
                     name={agent.name}
                     description={agent.description}
                     emoji={agent.emoji}
+                    imageUrl={agent.image_url}
+                    onClick={() => setEditingAgent(agent)}
                   />
                 ))}
               </div>
+
+              {/* Edit Agent Modal */}
+              {editingAgent && (
+                <EditAgentModal
+                  agent={editingAgent}
+                  isOpen={!!editingAgent}
+                  onClose={() => setEditingAgent(null)}
+                  onSave={loadAgents}
+                />
+              )}
             </div>
           </div>
         </div>
