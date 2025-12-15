@@ -60,6 +60,7 @@ export default function Home() {
     const savedLang = localStorage.getItem('roundtable-language');
     const savedModel = localStorage.getItem('roundtable-model');
     const savedTheme = localStorage.getItem('roundtable-theme');
+    const savedConversationId = localStorage.getItem('roundtable-conversation-id');
 
     // Validate UI language
     if (savedUiLang && ['en', 'ru', 'ka'].includes(savedUiLang)) {
@@ -69,6 +70,12 @@ export default function Home() {
     if (savedLang) setLanguage(savedLang);
     if (savedModel) setModel(savedModel);
     if (savedTheme) setTheme(savedTheme);
+
+    // Restore last conversation on page load
+    if (savedConversationId) {
+      // Delay to ensure Supabase is ready
+      setTimeout(() => handleSelectConversation(savedConversationId), 100);
+    }
   }, []);
 
   // Translations
@@ -104,6 +111,15 @@ export default function Home() {
     loadConversations();
     loadAgents();
   }, []);
+
+  // Persist conversation ID to localStorage
+  useEffect(() => {
+    if (currentConversationId) {
+      localStorage.setItem('roundtable-conversation-id', currentConversationId);
+    } else {
+      localStorage.removeItem('roundtable-conversation-id');
+    }
+  }, [currentConversationId]);
 
   const loadAgents = async () => {
     try {
@@ -324,7 +340,7 @@ export default function Home() {
       const userMsg = msgs.find(m => m.role === 'user');
       if (userMsg) {
         setInput(userMsg.content);
-        // Also update title if needed
+        setOriginalInput(userMsg.content); // Also set for Judge context
       }
 
       setCurrentConversationId(id);
