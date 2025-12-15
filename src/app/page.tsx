@@ -7,7 +7,7 @@ import {
   Loader2, Edit, AlertCircle, CheckCircle2, AlertTriangle, Info, Bot
 } from 'lucide-react';
 
-import { STANCE_CONFIG, VERDICT_CONFIG, DEFAULT_AGENTS } from '@/lib/constants';
+import { STANCE_CONFIG, VERDICT_CONFIG, DEFAULT_AGENTS, JUDGE_AGENT } from '@/lib/constants';
 import { chatWithAgent } from '@/lib/openai';
 import {
   getAgents,
@@ -29,6 +29,7 @@ import { translations, Language } from '@/lib/translations';
 
 export default function Home() {
   const [input, setInput] = useState('');
+  const [originalInput, setOriginalInput] = useState(''); // Store for Judge chat context
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [view, setView] = useState<'home' | 'analysis' | 'chat'>('home');
@@ -154,6 +155,7 @@ export default function Home() {
       });
 
       setResult(data);
+      setOriginalInput(input); // Save for Judge chat context
       setView('analysis');
       loadConversations(); // Refresh sidebar
     } catch (error) {
@@ -171,6 +173,21 @@ export default function Home() {
         id: 'init-insight',
         role: 'assistant',
         content: report.insights.join('\n\n'),
+        conversation_id: currentConversationId || 'temp',
+        created_at: new Date().toISOString()
+      }
+    ]);
+    setView('chat');
+  };
+
+  const handleJudgeClick = () => {
+    if (!result) return;
+    setActiveAgent('judge');
+    setMessages([
+      {
+        id: 'init-verdict',
+        role: 'assistant',
+        content: `${result.verdict.signal} — ${result.verdict.core_conflict}\n\n${result.verdict.reasoning}\n\nЗадайте мне вопросы о моём вердикте или попросите углубиться в конкретные аспекты.`,
         conversation_id: currentConversationId || 'temp',
         created_at: new Date().toISOString()
       }
@@ -197,14 +214,26 @@ export default function Home() {
         await addMessage(currentConversationId, 'user', chatInput, activeAgent || undefined);
       }
 
+      // Build request body - add judgeContext if chatting with Judge
+      const requestBody: Record<string, unknown> = {
+        agentId: activeAgent,
+        messages: [...messages, newUserMessage].map(m => ({ role: m.role, content: m.content })),
+        language: 'ru'
+      };
+
+      // If chatting with Judge, include full context
+      if (activeAgent === 'judge' && result) {
+        requestBody.judgeContext = {
+          originalInput,
+          reports: result.agent_reports,
+          verdict: result.verdict
+        };
+      }
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentId: activeAgent,
-          messages: [...messages, newUserMessage].map(m => ({ role: m.role, content: m.content })),
-          language: 'ru'
-        }),
+        body: JSON.stringify(requestBody),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -517,8 +546,17 @@ export default function Home() {
                 ))}
               </ol>
             </div>
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
-              ⏱️ {result.execution_time_seconds.toFixed(1)}s | 🔄 {result.total_llm_calls} LLM calls
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                ⏱️ {result.execution_time_seconds.toFixed(1)}s | 🔄 {result.total_llm_calls} LLM calls
+              </span>
+              <button
+                onClick={handleJudgeClick}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors text-sm font-medium"
+              >
+                <MessageCircle className="w-4 h-4" />
+                {t.chatWithJudge || 'Chat with Judge'}
+              </button>
             </div>
           </div>
 
@@ -563,7 +601,9 @@ export default function Home() {
 
   // CHAT VIEW
   if (view === 'chat' && activeAgent) {
-    const agent = DEFAULT_AGENTS.find(a => a.id === activeAgent)!;
+    const agent = activeAgent === 'judge'
+      ? JUDGE_AGENT
+      : DEFAULT_AGENTS.find(a => a.id === activeAgent)!;
 
     return (
       <div className="min-h-screen bg-white dark:bg-gray-950 flex">

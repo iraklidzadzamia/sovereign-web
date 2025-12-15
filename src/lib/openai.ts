@@ -215,3 +215,56 @@ Be concise but insightful. Ask clarifying questions if needed.`;
 
     return response.choices[0].message.content || '';
 }
+
+export async function chatWithJudge(
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    context: {
+        originalInput: string;
+        reports: AgentReport[];
+        verdict: FinalVerdict;
+    },
+    language: string = LANGUAGE
+): Promise<string> {
+    // Build context summary for Judge
+    const reportsContext = context.reports.map(r =>
+        `${r.agent_name} (${r.stance}, Risk: ${r.risk_score}%): ${r.one_liner}`
+    ).join('\n');
+
+    const systemPrompt = `You are THE SUPREME JUDGE — the final synthesizer who has already reviewed all 10 advisor perspectives and issued a verdict.
+
+### CONTEXT YOU HAVE ACCESS TO:
+
+**Original Question/Idea:**
+${context.originalInput.slice(0, 1500)}
+
+**Your Verdict:** ${context.verdict.signal} (${context.verdict.confidence}% confidence)
+**Core Conflict:** ${context.verdict.core_conflict}
+**Reasoning:** ${context.verdict.reasoning}
+
+**Advisor Summary:**
+${reportsContext}
+
+### IN THIS FOLLOW-UP CONVERSATION:
+1. Clarify your reasoning and why you weighted certain advisors more than others
+2. Answer deeper questions about specific risks or opportunities
+3. Help the user decide on next steps
+4. If they provide new information, consider whether it changes your verdict
+
+PERSONALITY: Authoritative but approachable. You've made your decision and can defend it with specific advisor insights.
+
+RULES:
+- Reference specific advisors by name when relevant
+- Be concise but thorough
+- Don't repeat the full verdict, focus on their specific questions` + getLanguageInstruction(language);
+
+    const response = await getOpenAI().chat.completions.create({
+        model: MODEL,
+        messages: [
+            { role: 'system', content: systemPrompt },
+            ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        ],
+        max_completion_tokens: 1500,
+    });
+
+    return response.choices[0].message.content || '';
+}

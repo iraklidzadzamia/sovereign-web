@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { chatWithAgent } from '@/lib/openai';
+import { chatWithAgent, chatWithJudge } from '@/lib/openai';
 
 export async function POST(request: NextRequest) {
     try {
-        const { agentId, messages, language = 'ru' } = await request.json();
+        const { agentId, messages, language = 'ru', judgeContext } = await request.json();
 
         if (!agentId || !Array.isArray(messages)) {
             return NextResponse.json(
@@ -12,7 +12,14 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const response = await chatWithAgent(agentId, messages, language);
+        let response: string;
+
+        // Special handling for Judge - needs full context
+        if (agentId === 'judge' && judgeContext) {
+            response = await chatWithJudge(messages, judgeContext, language);
+        } else {
+            response = await chatWithAgent(agentId, messages, language);
+        }
 
         return NextResponse.json({ response });
     } catch (error) {

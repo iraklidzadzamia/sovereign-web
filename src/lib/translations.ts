@@ -52,7 +52,10 @@ export const translations = {
         // Theme
         light: "Light",
         dark: "Dark",
-        system: "System"
+        system: "System",
+
+        // Judge
+        chatWithJudge: "Chat with Judge"
     },
     ru: {
         // Sidebar & Header
@@ -99,7 +102,10 @@ export const translations = {
         // Theme
         light: "Светлая",
         dark: "Темная",
-        system: "Системная"
+        system: "Системная",
+
+        // Judge
+        chatWithJudge: "Чат с Судьёй"
     },
     ka: {
         // Sidebar & Header
@@ -146,6 +152,9 @@ export const translations = {
         // Theme
         light: "ნათელი",
         dark: "მუქი",
-        system: "სისტემური"
+        system: "სისტემური",
+
+        // Judge
+        chatWithJudge: "მოსამართლესთან ჩატი"
     }
 };
