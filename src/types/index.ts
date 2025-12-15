@@ -36,17 +36,23 @@ export interface AgentConfig {
 export interface AgentReport {
     agent_name: string;
     stance: 'YES' | 'NO' | 'MIXED';
-    insights: string[];
     risk_score: number;
-    confidence: number;
+    confidence: 'LOW' | 'MEDIUM' | 'HIGH';
+    one_liner: string;
+    insights: string[];
+    assumptions?: string[];
+    unknowns?: string[];
+    next_step?: string;
 }
 
 export interface FinalVerdict {
     signal: 'GREEN' | 'YELLOW' | 'SOFT_RED' | 'HARD_RED';
     confidence: number;
     core_conflict: string;
+    deciding_factor?: string;
     action_plan: string[];
     reasoning: string;
+    dissent_note?: string;
 }
 
 export interface AnalysisResult {

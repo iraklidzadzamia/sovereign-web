@@ -277,7 +277,7 @@ STORY TESTS (answer each plainly):
 - **Would Anyone Miss It?**: If this disappeared tomorrow, who would care?
 - **Cringe Check**: What would make this feel fake or tryhard?
 
-NARRATIVE STRENGTH: Use risk_score inversely (low risk = strong narrative)
+RISK ASSESSMENT: Use risk_score to reflect narrative weakness (high = weak/unclear story, low = compelling story)
 
 CRITICAL RULES:
 - No mystical framing. Plain language only.

@@ -40,18 +40,27 @@ export async function runAgent(
 
     const systemPrompt = agent.prompt + getLanguageInstruction(language);
 
-    const userPrompt = `Analyze this business idea:
+    const userPrompt = `Analyze this business idea through your specific lens:
 
 ${userInput}
 
-Provide your analysis as JSON with these fields:
-- agent_name: "${agent.name}"
-- stance: "YES" | "NO" | "MIXED"
-- insights: [1-2 key insights as strings]
-- risk_score: 0-100 (higher = more risky)
-- confidence: 0-100 (your confidence in this assessment)
+OUTPUT — Return ONLY valid JSON matching this exact schema:
+{
+  "agent_name": "${agent.name}",
+  "stance": "YES" | "NO" | "MIXED",
+  "risk_score": 0-100,
+  "confidence": "LOW" | "MEDIUM" | "HIGH",
+  "one_liner": "your verdict in one sentence",
+  "insights": ["3-5 specific bullets, no generic advice"],
+  "assumptions": ["1-3 things that MUST be true for this to work"],
+  "unknowns": ["1-3 questions you cannot answer with given info"],
+  "next_step": "one concrete action doable within 48 hours"
+}
 
-Be direct. No hedging. Give your honest assessment.`;
+RULES:
+- Do not include any keys not listed above.
+- All array values must be strings.
+- Be concise. If uncertain, say so under unknowns — do not hedge in other fields.`;
 
     const response = await getOpenAI().chat.completions.create({
         model: MODEL,
@@ -60,11 +69,24 @@ Be direct. No hedging. Give your honest assessment.`;
             { role: 'user', content: userPrompt },
         ],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 1000,
+        max_completion_tokens: 1500,
     });
 
     const content = response.choices[0].message.content || '{}';
-    return JSON.parse(content) as AgentReport;
+    const raw = JSON.parse(content);
+
+    // Validate and normalize the response
+    return {
+        agent_name: raw.agent_name || agent.name,
+        stance: ['YES', 'NO', 'MIXED'].includes(raw.stance) ? raw.stance : 'MIXED',
+        risk_score: typeof raw.risk_score === 'number' ? Math.min(100, Math.max(0, raw.risk_score)) : 50,
+        confidence: ['LOW', 'MEDIUM', 'HIGH'].includes(raw.confidence) ? raw.confidence : 'MEDIUM',
+        one_liner: raw.one_liner || raw.insights?.[0] || 'No summary provided',
+        insights: Array.isArray(raw.insights) ? raw.insights.slice(0, 5) : [],
+        assumptions: Array.isArray(raw.assumptions) ? raw.assumptions.slice(0, 3) : undefined,
+        unknowns: Array.isArray(raw.unknowns) ? raw.unknowns.slice(0, 3) : undefined,
+        next_step: typeof raw.next_step === 'string' ? raw.next_step : undefined,
+    };
 }
 
 export async function runAllAgents(
@@ -75,9 +97,10 @@ export async function runAllAgents(
         runAgent(agent.id, userInput, language).catch(err => ({
             agent_name: agent.name,
             stance: 'MIXED' as const,
-            insights: [`Error: ${err.message.slice(0, 100)}`],
             risk_score: 50,
-            confidence: 0,
+            confidence: 'LOW' as const,
+            one_liner: `Error: ${err.message.slice(0, 100)}`,
+            insights: [`Analysis failed: ${err.message.slice(0, 100)}`],
         }))
     );
 
