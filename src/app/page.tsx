@@ -44,6 +44,7 @@ export default function Home() {
   // Settings state
   const [language, setLanguage] = useState('ru');
   const [model, setModel] = useState('gpt-4o');
+  const [theme, setTheme] = useState('system'); // 'light' | 'dark' | 'system'
 
   // Agents state
   const [agents, setAgents] = useState<DbAgent[]>([]);
@@ -53,9 +54,22 @@ export default function Home() {
   useEffect(() => {
     const savedLang = localStorage.getItem('roundtable-language');
     const savedModel = localStorage.getItem('roundtable-model');
+    const savedTheme = localStorage.getItem('roundtable-theme');
     if (savedLang) setLanguage(savedLang);
     if (savedModel) setModel(savedModel);
+    if (savedTheme) setTheme(savedTheme);
   }, []);
+
+  // Apply theme
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      root.classList.toggle('dark', systemTheme === 'dark');
+    } else {
+      root.classList.toggle('dark', theme === 'dark');
+    }
+  }, [theme]);
 
   // Load conversations and agents on mount
   useEffect(() => {
@@ -227,15 +241,15 @@ export default function Home() {
 
   // Sidebar component
   const Sidebar = () => (
-    <div className={`fixed inset-y-0 left-0 z-50 w-72 bg-gray-50 border-r border-gray-200 transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static`}>
+    <div className={`fixed inset-y-0 left-0 z-50 w-72 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static`}>
       <div className="flex flex-col h-full">
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <History className="w-5 h-5" />
             История
           </h2>
-          <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-1 hover:bg-gray-200 rounded">
+          <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -254,17 +268,17 @@ export default function Home() {
         {/* Conversations list */}
         <div className="flex-1 overflow-auto p-3 space-y-2">
           {conversations.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4">Нет сохранённых разговоров</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">Нет сохранённых разговоров</p>
           ) : (
             conversations.map((conv) => (
               <button
                 key={conv.id}
                 onClick={() => handleSelectConversation(conv.id)}
-                className={`w-full text-left p-3 rounded-xl hover:bg-gray-100 transition-colors ${currentConversationId === conv.id ? 'bg-indigo-50 border border-indigo-200' : ''
+                className={`w-full text-left p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${currentConversationId === conv.id ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800' : ''
                   }`}
               >
-                <div className="text-sm font-medium text-gray-900 truncate">{conv.title}</div>
-                <div className="text-xs text-gray-500 mt-1">
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{conv.title}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {new Date(conv.created_at).toLocaleDateString('ru-RU')}
                 </div>
               </button>
@@ -279,7 +293,7 @@ export default function Home() {
   // HOME VIEW
   if (view === 'home') {
     return (
-      <div className="min-h-screen bg-white flex">
+      <div className="min-h-screen bg-white dark:bg-gray-950 flex">
         <Sidebar />
 
         {/* Overlay for mobile */}
@@ -291,50 +305,54 @@ export default function Home() {
           {/* Mobile header */}
           <div className="lg:hidden p-4 border-b border-gray-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-gray-100 rounded-lg">
+              <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
                 <Menu className="w-6 h-6" />
               </button>
-              <h1 className="font-semibold text-gray-900">🏰 RoundTable</h1>
+              <h1 className="font-semibold text-gray-900 dark:text-gray-100">🏰 RoundTable</h1>
             </div>
             <SettingsDropdown
               language={language}
               model={model}
+              theme={theme}
               onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('roundtable-language', l); }}
               onModelChange={(m) => { setModel(m); localStorage.setItem('roundtable-model', m); }}
+              onThemeChange={(t) => { setTheme(t); localStorage.setItem('roundtable-theme', t); }}
             />
           </div>
 
           {/* Desktop header */}
-          <div className="hidden lg:flex items-center justify-end gap-2 p-4 border-b border-gray-200">
-            <Link href="/agents" className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+          <div className="hidden lg:flex items-center justify-end gap-2 p-4 border-b border-gray-200 dark:border-gray-800">
+            <Link href="/agents" className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
               <Edit className="w-4 h-4" />
               <span>Редактировать</span>
             </Link>
             <SettingsDropdown
               language={language}
               model={model}
+              theme={theme}
               onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('roundtable-language', l); }}
               onModelChange={(m) => { setModel(m); localStorage.setItem('roundtable-model', m); }}
+              onThemeChange={(t) => { setTheme(t); localStorage.setItem('roundtable-theme', t); }}
             />
           </div>
 
           <div className="max-w-3xl mx-auto px-6 py-12">
             {/* Header */}
             <div className="text-center mb-12">
-              <h1 className="text-4xl font-bold text-gray-900 mb-2">🏰 RoundTable</h1>
-              <p className="text-gray-500">Your Virtual Board of Advisors</p>
+              <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100 mb-2">🏰 RoundTable</h1>
+              <p className="text-gray-500 dark:text-gray-400">Your Virtual Board of Advisors</p>
             </div>
 
             {/* Input Area */}
-            <div className="bg-gray-50 rounded-2xl p-8 mb-8">
-              <label className="block text-sm font-medium text-gray-700 mb-3">
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-2xl p-8 mb-8">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                 Опиши свою идею
               </label>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Например: Хочу открыть грузинскую пекарню в Германии..."
-                className="w-full h-40 p-4 border border-gray-200 rounded-xl resize-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full h-40 p-4 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-xl resize-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
               />
               <button
                 onClick={handleAnalyze}
@@ -357,7 +375,7 @@ export default function Home() {
 
             {/* Agents Grid */}
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
                 <Settings className="w-5 h-5" />
                 Круглый стол (10 советников)
               </h2>
@@ -396,7 +414,7 @@ export default function Home() {
     const verdictConfig = VERDICT_CONFIG[result.verdict.signal];
 
     return (
-      <div className="min-h-screen bg-white flex">
+      <div className="min-h-screen bg-white dark:bg-gray-950 flex">
         <Sidebar />
 
         {sidebarOpen && (
@@ -404,8 +422,8 @@ export default function Home() {
         )}
 
         <div className="flex-1">
-          <div className="lg:hidden p-4 border-b border-gray-200 flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-gray-100 rounded-lg">
+          <div className="lg:hidden p-4 border-b border-gray-200 dark:border-gray-800 flex items-center gap-3">
+            <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
               <Menu className="w-6 h-6" />
             </button>
           </div>
@@ -414,7 +432,7 @@ export default function Home() {
             {/* Back button */}
             <button
               onClick={handleNewConversation}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
+              className="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 mb-6"
             >
               <ArrowLeft className="w-4 h-4" />
               Новый анализ
@@ -434,60 +452,61 @@ export default function Home() {
                   <p className="text-sm text-gray-600">{verdictConfig.description}</p>
                 </div>
                 <div className="ml-auto text-right">
-                  <div className="text-2xl font-bold text-gray-900">{result.verdict.confidence}%</div>
-                  <div className="text-xs text-gray-500">confidence</div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{result.verdict.confidence}%</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">confidence</div>
                 </div>
               </div>
-              <p className="text-gray-700 mb-4">{result.verdict.core_conflict}</p>
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-2">📋 План действий:</h3>
-                <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700">
-                  {result.verdict.action_plan.map((action, i) => (
-                    <li key={i}>{action}</li>
-                  ))}
-                </ol>
-              </div>
-              <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500">
-                ⏱️ {result.execution_time_seconds.toFixed(1)}s | 🔄 {result.total_llm_calls} LLM calls
-              </div>
             </div>
+            <p className="text-gray-700 dark:text-gray-300 mb-4">{result.verdict.core_conflict}</p>
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">📋 План действий:</h3>
+              <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                {result.verdict.action_plan.map((action, i) => (
+                  <li key={i}>{action}</li>
+                ))}
+              </ol>
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
+              ⏱️ {result.execution_time_seconds.toFixed(1)}s | 🔄 {result.total_llm_calls} LLM calls
+            </div>
+          </div>
 
-            {/* Agent Reports */}
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              🏰 Мнения советников
-              <span className="text-sm font-normal text-gray-500 ml-2">(нажми для чата)</span>
-            </h2>
-            <div className="space-y-3">
-              {result.agent_reports.map((report) => {
-                const agent = getAgentConfig(report.agent_name);
-                const stanceConfig = STANCE_CONFIG[report.stance];
-                return (
-                  <div
-                    key={report.agent_name}
-                    onClick={() => handleAgentClick(agent.id, report)}
-                    className="bg-gray-50 rounded-xl p-4 hover:bg-gray-100 cursor-pointer transition-colors"
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="text-2xl">{agent.emoji}</span>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-gray-900">{report.agent_name}</span>
-                          <span style={{ color: stanceConfig.color }}>{stanceConfig.emoji} {report.stance}</span>
-                          <span className="text-xs text-gray-500">Risk: {report.risk_score}%</span>
-                        </div>
-                        {report.insights.map((insight, i) => (
-                          <p key={i} className="text-sm text-gray-600 mb-1">└─ {insight}</p>
-                        ))}
+          {/* Agent Reports */}
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+            🏰 Мнения советников
+            <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">(нажми для чата)</span>
+          </h2>
+          <div className="space-y-3">
+            {result.agent_reports.map((report) => {
+              const agent = getAgentConfig(report.agent_name);
+              const stanceConfig = STANCE_CONFIG[report.stance];
+              return (
+                <div
+                  key={report.agent_name}
+                  onClick={() => handleAgentClick(agent.id, report)}
+                  className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">{agent.emoji}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium text-gray-900 dark:text-gray-100">{report.agent_name}</span>
+                        <span style={{ color: stanceConfig.color }}>{stanceConfig.emoji} {report.stance}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Risk: {report.risk_score}%</span>
                       </div>
-                      <MessageCircle className="w-5 h-5 text-gray-400" />
+                      {report.insights.map((insight, i) => (
+                        <p key={i} className="text-sm text-gray-600 dark:text-gray-400 mb-1">└─ {insight}</p>
+                      ))}
                     </div>
+                    <MessageCircle className="w-5 h-5 text-gray-400" />
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
+
     );
   }
 
@@ -496,7 +515,7 @@ export default function Home() {
     const agent = DEFAULT_AGENTS.find(a => a.id === activeAgent)!;
 
     return (
-      <div className="min-h-screen bg-white flex">
+      <div className="min-h-screen bg-white dark:bg-gray-950 flex">
         <Sidebar />
 
         {sidebarOpen && (
@@ -505,20 +524,20 @@ export default function Home() {
 
         <div className="flex-1 flex flex-col">
           {/* Header */}
-          <div className="border-b border-gray-200 px-6 py-4 flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 hover:bg-gray-100 rounded-lg">
+          <div className="border-b border-gray-200 dark:border-gray-800 px-6 py-4 flex items-center gap-3">
+            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
               <Menu className="w-5 h-5" />
             </button>
             <button
               onClick={() => setView('analysis')}
-              className="p-2 hover:bg-gray-100 rounded-lg"
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <span className="text-2xl">{agent.emoji}</span>
             <div>
-              <h2 className="font-semibold text-gray-900">{agent.name}</h2>
-              <p className="text-xs text-gray-500">{agent.description}</p>
+              <h2 className="font-semibold text-gray-900 dark:text-gray-100">{agent.name}</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{agent.description}</p>
             </div>
           </div>
 
@@ -532,7 +551,7 @@ export default function Home() {
                 <div
                   className={`max-w-[80%] rounded-2xl px-4 py-3 ${msg.role === 'user'
                     ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-900'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
                     }`}
                 >
                   {msg.content}
@@ -541,15 +560,15 @@ export default function Home() {
             ))}
             {chatLoading && (
               <div className="flex justify-start">
-                <div className="bg-gray-100 rounded-2xl px-4 py-3">
-                  <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
+                <div className="bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-3">
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-500 dark:text-gray-400" />
                 </div>
               </div>
             )}
           </div>
 
           {/* Input */}
-          <div className="border-t border-gray-200 px-6 py-4">
+          <div className="border-t border-gray-200 dark:border-gray-800 px-6 py-4">
             <div className="flex gap-3">
               <input
                 type="text"
@@ -557,7 +576,7 @@ export default function Home() {
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleChatSend()}
                 placeholder="Задай вопрос..."
-                className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="flex-1 px-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
               />
               <button
                 onClick={handleChatSend}

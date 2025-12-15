@@ -46,13 +46,13 @@ export default function AgentCard({
         >
             <div
                 onClick={onClick}
-                className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4 text-center 
-                   hover:from-indigo-50 hover:to-purple-50 hover:shadow-lg 
-                   transition-all duration-300 cursor-pointer border border-gray-200
-                   hover:border-indigo-300 hover:scale-105"
+                className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-2xl p-4 text-center 
+                   hover:from-indigo-50 hover:to-purple-50 dark:hover:from-indigo-900/30 dark:hover:to-purple-900/30 hover:shadow-lg 
+                   transition-all duration-300 cursor-pointer border border-gray-200 dark:border-gray-700
+                   hover:border-indigo-300 dark:hover:border-indigo-700 hover:scale-105"
             >
                 {/* Avatar */}
-                <div className="w-16 h-16 mx-auto mb-3 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
+                <div className="w-16 h-16 mx-auto mb-3 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
                     {hasImage ? (
                         <Image
                             src={avatarSrc}
@@ -67,10 +67,10 @@ export default function AgentCard({
                 </div>
 
                 {/* Name */}
-                <div className="text-sm font-semibold text-gray-900 mb-1">{name}</div>
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">{name}</div>
 
                 {/* Short description (truncated) */}
-                <div className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
+                <div className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
                     {description}
                 </div>
             </div>
