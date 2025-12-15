@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Send, Loader2, ArrowLeft, MessageCircle, Settings, History, Menu, Plus, X } from 'lucide-react';
+import { Send, Loader2, ArrowLeft, MessageCircle, Settings, History, Menu, Plus, X, Edit } from 'lucide-react';
+import Link from 'next/link';
 import { DEFAULT_AGENTS, VERDICT_CONFIG, STANCE_CONFIG } from '@/lib/constants';
 import { AgentReport, FinalVerdict } from '@/types';
+import SettingsDropdown from '@/components/SettingsDropdown';
 import {
   createConversation,
   getConversations,
@@ -40,6 +42,18 @@ export default function Home() {
   const [conversations, setConversations] = useState<DbConversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
 
+  // Settings state
+  const [language, setLanguage] = useState('ru');
+  const [model, setModel] = useState('gpt-4o');
+
+  // Load settings from localStorage
+  useEffect(() => {
+    const savedLang = localStorage.getItem('roundtable-language');
+    const savedModel = localStorage.getItem('roundtable-model');
+    if (savedLang) setLanguage(savedLang);
+    if (savedModel) setModel(savedModel);
+  }, []);
+
   // Load conversations on mount
   useEffect(() => {
     loadConversations();
@@ -70,7 +84,7 @@ export default function Home() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input, language: 'ru' }),
+        body: JSON.stringify({ input, language, model }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -218,11 +232,33 @@ export default function Home() {
 
         <div className="flex-1">
           {/* Mobile header */}
-          <div className="lg:hidden p-4 border-b border-gray-200 flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-gray-100 rounded-lg">
-              <Menu className="w-6 h-6" />
-            </button>
-            <h1 className="font-semibold text-gray-900">🏰 RoundTable</h1>
+          <div className="lg:hidden p-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <Menu className="w-6 h-6" />
+              </button>
+              <h1 className="font-semibold text-gray-900">🏰 RoundTable</h1>
+            </div>
+            <SettingsDropdown
+              language={language}
+              model={model}
+              onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('roundtable-language', l); }}
+              onModelChange={(m) => { setModel(m); localStorage.setItem('roundtable-model', m); }}
+            />
+          </div>
+
+          {/* Desktop header */}
+          <div className="hidden lg:flex items-center justify-end gap-2 p-4 border-b border-gray-200">
+            <Link href="/agents" className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+              <Edit className="w-4 h-4" />
+              <span>Редактировать</span>
+            </Link>
+            <SettingsDropdown
+              language={language}
+              model={model}
+              onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('roundtable-language', l); }}
+              onModelChange={(m) => { setModel(m); localStorage.setItem('roundtable-model', m); }}
+            />
           </div>
 
           <div className="max-w-3xl mx-auto px-6 py-12">

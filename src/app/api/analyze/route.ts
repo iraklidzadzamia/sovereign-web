@@ -3,7 +3,7 @@ import { runAllAgents, runJudge } from '@/lib/openai';
 
 export async function POST(request: NextRequest) {
     try {
-        const { input, language = 'ru' } = await request.json();
+        const { input, language = 'ru', model = 'gpt-4o' } = await request.json();
 
         if (!input || typeof input !== 'string') {
             return NextResponse.json(
