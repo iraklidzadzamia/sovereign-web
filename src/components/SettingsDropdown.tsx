@@ -77,7 +77,10 @@ export default function SettingsDropdown({
                             {LANGUAGES.map((lang) => (
                                 <button
                                     key={lang.code}
-                                    onClick={() => onLanguageChange(lang.code)}
+                                    onClick={() => {
+                                        onLanguageChange(lang.code);
+                                        setIsOpen(false);
+                                    }}
                                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${language === lang.code
                                         ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
                                         : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -103,7 +106,10 @@ export default function SettingsDropdown({
                                 return (
                                     <button
                                         key={t.id}
-                                        onClick={() => onThemeChange(t.id)}
+                                        onClick={() => {
+                                            onThemeChange(t.id);
+                                            setIsOpen(false);
+                                        }}
                                         className={`flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-lg text-xs transition-colors ${theme === t.id
                                             ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
                                             : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -128,7 +134,10 @@ export default function SettingsDropdown({
                             {MODELS.map((m) => (
                                 <button
                                     key={m.id}
-                                    onClick={() => onModelChange(m.id)}
+                                    onClick={() => {
+                                        onModelChange(m.id);
+                                        setIsOpen(false);
+                                    }}
                                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${model === m.id
                                         ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
                                         : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
