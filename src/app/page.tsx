@@ -198,6 +198,19 @@ export default function Home() {
 
   const handleChatSend = async () => {
     if (!chatInput.trim() || !activeAgent) return;
+
+    // Check if Judge needs context but doesn't have it
+    if (activeAgent === 'judge' && !result) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString() + '-error',
+        role: 'assistant',
+        content: '⚠️ Контекст анализа потерян. Пожалуйста, запустите новый анализ чтобы общаться с Судьёй.',
+        conversation_id: currentConversationId || 'temp',
+        created_at: new Date().toISOString()
+      }]);
+      return;
+    }
+
     const newUserMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -255,6 +268,14 @@ export default function Home() {
       }]);
     } catch (error) {
       console.error(error);
+      // Show error to user
+      setMessages(prev => [...prev, {
+        id: Date.now().toString() + '-error',
+        role: 'assistant',
+        content: `❌ Ошибка: ${error instanceof Error ? error.message : 'Не удалось получить ответ'}`,
+        conversation_id: currentConversationId || 'temp',
+        created_at: new Date().toISOString()
+      }]);
     } finally {
       setChatLoading(false);
     }

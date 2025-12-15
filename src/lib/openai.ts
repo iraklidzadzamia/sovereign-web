@@ -235,7 +235,7 @@ export async function chatWithJudge(
 ### CONTEXT YOU HAVE ACCESS TO:
 
 **Original Question/Idea:**
-${context.originalInput.slice(0, 1500)}
+${context.originalInput.slice(0, 1000)}
 
 **Your Verdict:** ${context.verdict.signal} (${context.verdict.confidence}% confidence)
 **Core Conflict:** ${context.verdict.core_conflict}
@@ -257,14 +257,22 @@ RULES:
 - Be concise but thorough
 - Don't repeat the full verdict, focus on their specific questions` + getLanguageInstruction(language);
 
-    const response = await getOpenAI().chat.completions.create({
-        model: MODEL,
-        messages: [
-            { role: 'system', content: systemPrompt },
-            ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-        ],
-        max_completion_tokens: 1500,
-    });
+    // Limit conversation history to last 10 messages to prevent token overflow
+    const recentMessages = messages.slice(-10);
 
-    return response.choices[0].message.content || '';
+    try {
+        const response = await getOpenAI().chat.completions.create({
+            model: MODEL,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                ...recentMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+            ],
+            max_completion_tokens: 2000,
+        });
+
+        return response.choices[0].message.content || 'No response received';
+    } catch (error) {
+        console.error('Judge chat error:', error);
+        throw new Error(`Judge could not respond: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 }
