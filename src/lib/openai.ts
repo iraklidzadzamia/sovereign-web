@@ -83,7 +83,7 @@ RULES:
 
     // Validate and normalize the response
     return {
-        agent_name: raw.agent_name || agent.name,
+        agent_name: agent.name, // Never trust model for this - we know the agent
         stance: ['YES', 'NO', 'MIXED'].includes(raw.stance) ? raw.stance : 'MIXED',
         risk_score: typeof raw.risk_score === 'number' ? Math.min(100, Math.max(0, raw.risk_score)) : 50,
         confidence: ['LOW', 'MEDIUM', 'HIGH'].includes(raw.confidence) ? raw.confidence : 'MEDIUM',
