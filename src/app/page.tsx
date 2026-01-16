@@ -2,20 +2,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import ReactMarkdown from 'react-markdown';
 import {
-  Menu, X, Plus, History, Settings, ArrowLeft, MessageCircle, Send,
-  Loader2, Edit, AlertCircle, CheckCircle2, AlertTriangle, Info, Bot,
-  Copy, Trash2, Pencil, Check
+  Menu, X, Plus, History, Settings, Edit, Users,
+  Pencil, Check, Trash2
 } from 'lucide-react';
 
-import { STANCE_CONFIG, VERDICT_CONFIG, DEFAULT_AGENTS, JUDGE_AGENT } from '@/lib/constants';
-import { chatWithAgent } from '@/lib/openai';
 import {
   getAgents,
   createConversation,
   getConversations,
-  getConversation,
   addMessage,
   getMessages,
   updateConversation,
@@ -23,86 +18,73 @@ import {
   DbConversation
 } from '@/lib/supabase';
 import SettingsDropdown from '@/components/SettingsDropdown';
-import AgentCard from '@/components/AgentCard';
-import EditAgentModal from '@/components/EditAgentModal';
-import { AnalysisResult, Message, AgentReport } from '@/types';
+import ChatBubble from '@/components/ChatBubble';
+import ChatInput, { ChatInputRef } from '@/components/ChatInput';
+import TypingIndicator from '@/components/TypingIndicator';
 import { translations, Language } from '@/lib/translations';
 
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  character?: string;
+  emoji?: string;
+  timestamp?: string;
+}
 
 export default function Home() {
-  const [input, setInput] = useState('');
-  const [originalInput, setOriginalInput] = useState(''); // Store for Judge chat context
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [view, setView] = useState<'home' | 'analysis' | 'chat'>('home');
-  const [activeAgent, setActiveAgent] = useState<string | null>(null);
+  // Chat state
   const [messages, setMessages] = useState<Message[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [typingCharacter, setTypingCharacter] = useState<{ name: string; emoji: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<ChatInputRef>(null);
 
-  // Sidebar state
+  // Conversation state
   const [conversations, setConversations] = useState<DbConversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [hiddenConversations, setHiddenConversations] = useState<string[]>([]);
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
-  const [copied, setCopied] = useState(false);
 
   // Settings state
   const [uiLanguage, setUiLanguage] = useState<Language>('ru');
-  const [language, setLanguage] = useState('ru'); // Output language
-  const [model, setModel] = useState('gpt-4o');
-  const [theme, setTheme] = useState('system'); // 'light' | 'dark' | 'system'
+  const [language, setLanguage] = useState('ru');
+  const [theme, setTheme] = useState('system');
 
   // Agents state
   const [agents, setAgents] = useState<DbAgent[]>([]);
-  const [editingAgent, setEditingAgent] = useState<DbAgent | null>(null);
 
   // Load settings from localStorage
   useEffect(() => {
     const savedUiLang = localStorage.getItem('roundtable-ui-language');
     const savedLang = localStorage.getItem('roundtable-language');
-    const savedModel = localStorage.getItem('roundtable-model');
     const savedTheme = localStorage.getItem('roundtable-theme');
-    const savedConversationId = localStorage.getItem('roundtable-conversation-id');
     const savedHidden = localStorage.getItem('roundtable-hidden-conversations');
 
-    // Validate UI language
     if (savedUiLang && ['en', 'ru', 'ka'].includes(savedUiLang)) {
       setUiLanguage(savedUiLang as Language);
     }
-
     if (savedLang) setLanguage(savedLang);
-    if (savedModel) setModel(savedModel);
     if (savedTheme) setTheme(savedTheme);
     if (savedHidden) setHiddenConversations(JSON.parse(savedHidden));
-
-    // Restore last conversation on page load
-    if (savedConversationId) {
-      // Delay to ensure Supabase is ready
-      setTimeout(() => handleSelectConversation(savedConversationId), 100);
-    }
   }, []);
 
-  // Translations
   const t = translations[uiLanguage];
 
-  // Apply theme with system listener
+  // Apply theme
   useEffect(() => {
     const root = document.documentElement;
-
     const applyTheme = () => {
       const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       const shouldBeDark = theme === 'dark' || (theme === 'system' && isSystemDark);
-
       if (shouldBeDark) {
         root.classList.add('dark');
       } else {
         root.classList.remove('dark');
       }
     };
-
     applyTheme();
 
     if (theme === 'system') {
@@ -113,29 +95,22 @@ export default function Home() {
     }
   }, [theme]);
 
-  // Load conversations and agents on mount
+  // Load data on mount
   useEffect(() => {
     loadConversations();
     loadAgents();
   }, []);
 
-  // Persist conversation ID to localStorage
+  // Scroll to bottom when messages change
   useEffect(() => {
-    if (currentConversationId) {
-      localStorage.setItem('roundtable-conversation-id', currentConversationId);
-    } else {
-      localStorage.removeItem('roundtable-conversation-id');
-    }
-  }, [currentConversationId]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const loadAgents = async () => {
     try {
       const data = await getAgents();
       if (data && data.length > 0) {
         setAgents(data);
-      } else {
-        // Fallback to defaults if DB is empty (should not happen if initialized)
-        // setAgents(DEFAULT_AGENTS);
       }
     } catch (error) {
       console.error('Failed to load agents:', error);
@@ -151,211 +126,157 @@ export default function Home() {
     }
   };
 
-  const handleAnalyze = async () => {
-    if (!input.trim()) return;
+  const getAgentEmoji = (characterName: string): string => {
+    const agent = agents.find(a => a.name === characterName);
+    return agent?.emoji || '🤖';
+  };
+
+  // Insert @mention when clicking on a character chip
+  const insertMention = (agentName: string) => {
+    chatInputRef.current?.insertText(`@${agentName.toLowerCase()}`);
+  };
+
+  const handleSend = async (messageText: string) => {
+    if (!messageText.trim() || loading) return;
+
     setLoading(true);
-    try {
-      // Create conversation in Supabase
-      const title = input.slice(0, 50) + (input.length > 50 ? '...' : '');
-      const conversation = await createConversation(title, input);
-      setCurrentConversationId(conversation.id);
 
-      // Save user message
-      await addMessage(conversation.id, 'user', input);
-
-      // Run analysis
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input, language, model }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      // Save analysis result as system message
-      await addMessage(conversation.id, 'system', JSON.stringify(data), undefined, {
-        type: 'analysis_result',
-        verdict: data.verdict?.signal,
-      });
-
-      setResult(data);
-      setOriginalInput(input); // Save for Judge chat context
-      setView('analysis');
-      loadConversations(); // Refresh sidebar
-    } catch (error) {
-      console.error(error);
-      alert('Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAgentClick = async (agentId: string, report: AgentReport) => {
-    setActiveAgent(agentId);
-    setMessages([
-      {
-        id: 'init-insight',
-        role: 'assistant',
-        content: report.insights.join('\n\n'),
-        conversation_id: currentConversationId || 'temp',
-        created_at: new Date().toISOString()
+    // Create conversation if needed
+    let convId = currentConversationId;
+    if (!convId) {
+      try {
+        const title = messageText.slice(0, 50) + (messageText.length > 50 ? '...' : '');
+        const conversation = await createConversation(title, messageText, language);
+        convId = conversation.id;
+        setCurrentConversationId(convId);
+        loadConversations();
+      } catch (error) {
+        console.error('Failed to create conversation:', error);
+        setLoading(false);
+        return;
       }
-    ]);
-    setView('chat');
-  };
-
-  const handleJudgeClick = () => {
-    if (!result) return;
-    setActiveAgent('judge');
-    setMessages([
-      {
-        id: 'init-verdict',
-        role: 'assistant',
-        content: `${result.verdict.signal} — ${result.verdict.core_conflict}\n\n${result.verdict.reasoning}\n\nЗадайте мне вопросы о моём вердикте или попросите углубиться в конкретные аспекты.`,
-        conversation_id: currentConversationId || 'temp',
-        created_at: new Date().toISOString()
-      }
-    ]);
-    setView('chat');
-  };
-
-  const handleChatSend = async () => {
-    if (!chatInput.trim() || !activeAgent) return;
-
-    // Check if Judge needs context but doesn't have it
-    if (activeAgent === 'judge' && !result) {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString() + '-error',
-        role: 'assistant',
-        content: '⚠️ Контекст анализа потерян. Пожалуйста, запустите новый анализ чтобы общаться с Судьёй.',
-        conversation_id: currentConversationId || 'temp',
-        created_at: new Date().toISOString()
-      }]);
-      return;
     }
 
-    const newUserMessage: Message = {
+    // Add user message to UI
+    const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: chatInput,
-      conversation_id: currentConversationId || 'temp',
-      created_at: new Date().toISOString()
+      content: messageText,
+      timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
     };
-    setMessages(prev => [...prev, newUserMessage]);
-    setChatInput('');
-    setChatLoading(true);
+    setMessages(prev => [...prev, userMessage]);
+
+    // Save user message to Supabase
+    try {
+      await addMessage(convId, 'user', messageText);
+    } catch (error) {
+      console.error('Failed to save user message:', error);
+    }
+
+    // Build messages for API
+    const apiMessages = [...messages, userMessage].map(m => ({
+      role: m.role,
+      content: m.content,
+      character: m.character
+    }));
 
     try {
-      // Save user message to Supabase
-      if (currentConversationId) {
-        await addMessage(currentConversationId, 'user', chatInput, activeAgent || undefined);
-      }
-
-      // Build request body - add judgeContext if chatting with Judge
-      const requestBody: Record<string, unknown> = {
-        agentId: activeAgent,
-        messages: [...messages, newUserMessage].map(m => ({ role: m.role, content: m.content })),
-        language: 'ru'
-      };
-
-      // If chatting with Judge, include full context
-      if (activeAgent === 'judge' && result) {
-        requestBody.judgeContext = {
-          originalInput,
-          reports: result.agent_reports,
-          verdict: result.verdict
-        };
-      }
-
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({ messages: apiMessages, language }),
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
 
-      const assistantResponse = data.response;
-
-      // Save agent response to Supabase
-      if (currentConversationId) {
-        await addMessage(currentConversationId, 'assistant', assistantResponse, activeAgent || undefined);
+      if (data.error) {
+        throw new Error(data.error);
       }
 
-      setMessages(prev => [...prev, {
-        id: Date.now().toString() + '-response',
-        role: 'assistant',
-        content: assistantResponse,
-        conversation_id: currentConversationId || 'temp',
-        created_at: new Date().toISOString()
-      }]);
+      // Add each character's response with staggered timing for realistic effect
+      const responses = data.responses || [];
+
+      for (let i = 0; i < responses.length; i++) {
+        const response = responses[i];
+        const emoji = getAgentEmoji(response.character);
+
+        // Show typing indicator
+        setTypingCharacter({ name: response.character, emoji });
+
+        // Random delay between 800ms and 2500ms for realistic effect
+        const baseDelay = i === 0 ? 800 : 1200;
+        const randomExtra = Math.random() * 1500;
+        await new Promise(resolve => setTimeout(resolve, baseDelay + randomExtra));
+
+        // Hide typing indicator and add the message
+        setTypingCharacter(null);
+
+        const timestamp = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const assistantMessage: Message = {
+          id: Date.now().toString() + '-' + response.character,
+          role: 'assistant',
+          content: response.message,
+          character: response.character,
+          emoji,
+          timestamp
+        };
+
+        setMessages(prev => [...prev, assistantMessage]);
+
+        // Save to Supabase (don't await to keep UI responsive)
+        addMessage(convId!, 'assistant', response.message, response.character.toLowerCase())
+          .catch(error => console.error('Failed to save assistant message:', error));
+
+        // Small pause before next typing indicator (random variation)
+        if (i < responses.length - 1 && Math.random() > 0.25) {
+          await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 400));
+        }
+      }
     } catch (error) {
-      console.error(error);
-      // Show error to user
+      console.error('Chat error:', error);
       setMessages(prev => [...prev, {
         id: Date.now().toString() + '-error',
         role: 'assistant',
-        content: `❌ Ошибка: ${error instanceof Error ? error.message : 'Не удалось получить ответ'}`,
-        conversation_id: currentConversationId || 'temp',
-        created_at: new Date().toISOString()
+        content: `❌ Error: ${error instanceof Error ? error.message : 'Failed to get response'}`,
+        character: 'System',
+        emoji: '⚠️',
+        timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
       }]);
     } finally {
-      setChatLoading(false);
+      setLoading(false);
+      setTypingCharacter(null);
     }
   };
 
   const handleNewConversation = () => {
-    setInput('');
-    setResult(null);
-    setActiveAgent(null);
     setMessages([]);
     setCurrentConversationId(null);
-    setView('home');
     setSidebarOpen(false);
   };
 
-  // Copy all analysis + chat to clipboard
-  const handleCopyAll = async () => {
-    if (!result) return;
+  const handleSelectConversation = async (id: string) => {
+    try {
+      setSidebarOpen(false);
+      const msgs = await getMessages(id);
 
-    let text = `# Анализ идеи\n\n`;
-    text += `**Оригинальный запрос:**\n${originalInput}\n\n`;
-    text += `---\n\n`;
-    text += `## 🏛️ Вердикт: ${result.verdict.signal} (${result.verdict.confidence}%)\n\n`;
-    text += `**Конфликт:** ${result.verdict.core_conflict}\n\n`;
-    text += `**Обоснование:** ${result.verdict.reasoning}\n\n`;
-    text += `**План действий:**\n${result.verdict.action_plan.map((a, i) => `${i + 1}. ${a}`).join('\n')}\n\n`;
-    text += `---\n\n## 👥 Мнения советников\n\n`;
+      // Convert DB messages to UI format
+      const uiMessages: Message[] = msgs
+        .filter(m => m.role !== 'system')
+        .map(m => ({
+          id: m.id,
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+          character: m.agent_id ? agents.find(a => a.id === m.agent_id)?.name : undefined,
+          emoji: m.agent_id ? agents.find(a => a.id === m.agent_id)?.emoji : undefined,
+          timestamp: new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+        }));
 
-    for (const report of result.agent_reports) {
-      text += `### ${report.agent_name} (${report.stance}, Риск: ${report.risk_score}%)\n`;
-      text += `${report.one_liner}\n\n`;
-      text += `**Инсайты:**\n${report.insights.map(i => `- ${i}`).join('\n')}\n\n`;
-      if (report.assumptions?.length) {
-        text += `**Допущения:** ${report.assumptions.join('; ')}\n`;
-      }
-      if (report.unknowns?.length) {
-        text += `**Неизвестные:** ${report.unknowns.join('; ')}\n`;
-      }
-      if (report.next_step) {
-        text += `**Следующий шаг:** ${report.next_step}\n`;
-      }
-      text += `\n`;
+      setMessages(uiMessages);
+      setCurrentConversationId(id);
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
     }
-
-    if (messages.length > 0) {
-      text += `---\n\n## 💬 Диалог\n\n`;
-      for (const msg of messages) {
-        text += `**${msg.role === 'user' ? 'Вы' : 'AI'}:** ${msg.content}\n\n`;
-      }
-    }
-
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
-  // Rename conversation
   const handleRenameConversation = async (id: string) => {
     if (!newTitle.trim()) return;
     try {
@@ -370,58 +291,12 @@ export default function Home() {
     }
   };
 
-  // Hide conversation (soft delete - only UI, stays in Supabase)
   const handleHideConversation = (id: string) => {
     const updated = [...hiddenConversations, id];
     setHiddenConversations(updated);
     localStorage.setItem('roundtable-hidden-conversations', JSON.stringify(updated));
     if (currentConversationId === id) {
       handleNewConversation();
-    }
-  };
-
-  const getAgentConfig = (name: string) => {
-    return DEFAULT_AGENTS.find(a => a.name === name) || DEFAULT_AGENTS[0];
-  };
-
-  // Handle selecting a conversation from history
-  const handleSelectConversation = async (id: string) => {
-    try {
-      setSidebarOpen(false);
-      const msgs = await getMessages(id);
-
-      // Find analysis result
-      const analysisMsg = msgs.find(m => m.metadata?.type === 'analysis_result');
-
-      if (analysisMsg) {
-        // Parse result from stringified content
-        try {
-          const data = JSON.parse(analysisMsg.content);
-          setResult(data);
-          setView('analysis');
-        } catch (e) {
-          console.error('Failed to parse analysis result:', e);
-          setView('home');
-        }
-      } else {
-        // Fallback: If no analysis result found, just go to home or maybe handle as chat?
-        // For now, we assume analysis result exists for valid conversations
-        setView('home');
-      }
-
-      // Find initial user input to populate
-      const userMsg = msgs.find(m => m.role === 'user');
-      if (userMsg) {
-        setInput(userMsg.content);
-        setOriginalInput(userMsg.content); // Also set for Judge context
-      }
-
-      setCurrentConversationId(id);
-      // Reset active agent and chat messages when switching conversation
-      setActiveAgent(null);
-      setMessages(msgs.filter(m => m.role !== 'system') as Message[]);
-    } catch (error) {
-      console.error('Failed to load conversation:', error);
     }
   };
 
@@ -501,14 +376,14 @@ export default function Home() {
                         <button
                           onClick={(e) => { e.stopPropagation(); setEditingTitle(conv.id); setNewTitle(conv.title); }}
                           className="p-1 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
-                          title="Переименовать"
+                          title="Rename"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleHideConversation(conv.id); }}
                           className="p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
-                          title="Скрыть"
+                          title="Hide"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -519,361 +394,130 @@ export default function Home() {
               ))
           )}
         </div>
+
+        {/* Characters info */}
+        <div className="p-3 border-t border-gray-200 dark:border-gray-800">
+          <Link
+            href="/agents"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            <Users className="w-4 h-4" />
+            <span>{agents.length} персонажей</span>
+            <Edit className="w-3 h-3 ml-auto" />
+          </Link>
+        </div>
       </div>
     </div>
   );
 
+  // Welcome screen when no messages
+  const WelcomeScreen = () => (
+    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+      <div className="text-6xl mb-4">🏰</div>
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+        RoundTable
+      </h1>
+      <p className="text-gray-500 dark:text-gray-400 mb-8 max-w-md">
+        {t.subtitle}
+      </p>
 
-  // HOME VIEW
-  if (view === 'home') {
-    return (
-      <div className="min-h-screen bg-white dark:bg-gray-950 flex">
-        <Sidebar />
-
-        {/* Overlay for mobile */}
-        {sidebarOpen && (
-          <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      {/* Show agents - clickable to insert @mention */}
+      <div className="flex flex-wrap justify-center gap-3 mb-8">
+        {agents.slice(0, 6).map(agent => (
+          <button
+            key={agent.id}
+            onClick={() => insertMention(agent.name)}
+            className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-full text-sm hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:scale-105 transition-all cursor-pointer"
+          >
+            <span>{agent.emoji}</span>
+            <span className="text-gray-700 dark:text-gray-300">{agent.name}</span>
+          </button>
+        ))}
+        {agents.length > 6 && (
+          <div className="flex items-center px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-full text-sm text-gray-500">
+            +{agents.length - 6} more
+          </div>
         )}
-
-        <div className="flex-1">
-          {/* Mobile header */}
-          <div className="lg:hidden p-4 border-b border-gray-200 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-                <Menu className="w-6 h-6" />
-              </button>
-              <h1 className="font-semibold text-gray-900 dark:text-gray-100">🏰 RoundTable</h1>
-            </div>
-            <SettingsDropdown
-              uiLanguage={uiLanguage}
-              language={language}
-              model={model}
-              theme={theme}
-              onUiLanguageChange={(l) => { setUiLanguage(l); localStorage.setItem('roundtable-ui-language', l); }}
-              onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('roundtable-language', l); }}
-              onModelChange={(m) => { setModel(m); localStorage.setItem('roundtable-model', m); }}
-              onThemeChange={(t) => { setTheme(t); localStorage.setItem('roundtable-theme', t); }}
-            />
-          </div>
-
-          {/* Desktop header */}
-          <div className="hidden lg:flex items-center justify-end gap-2 p-4 border-b border-gray-200 dark:border-gray-800">
-            <Link href="/agents" className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-              <Edit className="w-4 h-4" />
-              <span>{t.edit}</span>
-            </Link>
-            <SettingsDropdown
-              uiLanguage={uiLanguage}
-              language={language}
-              model={model}
-              theme={theme}
-              onUiLanguageChange={(l) => { setUiLanguage(l); localStorage.setItem('roundtable-ui-language', l); }}
-              onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('roundtable-language', l); }}
-              onModelChange={(m) => { setModel(m); localStorage.setItem('roundtable-model', m); }}
-              onThemeChange={(t) => { setTheme(t); localStorage.setItem('roundtable-theme', t); }}
-            />
-          </div>
-
-          <div className="max-w-3xl mx-auto px-6 py-12">
-            {/* Header */}
-            <div className="text-center mb-12">
-              <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100 mb-2">🏰 RoundTable</h1>
-              <p className="text-gray-500 dark:text-gray-400">{t.subtitle}</p>
-            </div>
-
-            {/* Input Area */}
-            <div className="bg-gray-50 dark:bg-gray-900 rounded-2xl p-8 mb-8">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                {t.describeIdea}
-              </label>
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={t.placeholder}
-                className="w-full h-40 p-4 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-xl resize-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-              />
-              <button
-                onClick={handleAnalyze}
-                disabled={loading || !input.trim()}
-                className="mt-4 w-full bg-indigo-600 text-white py-3 px-6 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    {t.analyzing}
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-5 h-5" />
-                    {t.startAnalysis}
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Agents Grid */}
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-                <Settings className="w-5 h-5" />
-                {t.roundTableTitle}
-              </h2>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                {agents.map((agent) => (
-                  <AgentCard
-                    key={agent.id}
-                    id={agent.id}
-                    name={agent.name}
-                    description={agent.description}
-                    emoji={agent.emoji}
-                    imageUrl={agent.image_url}
-                    onClick={() => setEditingAgent(agent)}
-                  />
-                ))}
-              </div>
-
-              {/* Edit Agent Modal */}
-              {editingAgent && (
-                <EditAgentModal
-                  agent={editingAgent}
-                  isOpen={!!editingAgent}
-                  uiLanguage={uiLanguage}
-                  onClose={() => setEditingAgent(null)}
-                  onSave={loadAgents}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ANALYSIS VIEW
-  if (view === 'analysis' && result) {
-    const verdictConfig = VERDICT_CONFIG[result.verdict.signal];
-
-    return (
-      <div className="min-h-screen bg-white dark:bg-gray-950 flex">
-        <Sidebar />
-
-        {sidebarOpen && (
-          <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
-        )}
-
-        <div className="flex-1">
-          <div className="lg:hidden p-4 border-b border-gray-200 dark:border-gray-800 flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-              <Menu className="w-6 h-6" />
-            </button>
-          </div>
-
-          <div className="max-w-3xl mx-auto px-6 py-8">
-            {/* Back button */}
-            <button
-              onClick={handleNewConversation}
-              className="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 mb-6"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              {t.newAnalysis}
-            </button>
-
-            {/* Verdict Card */}
-            <div
-              className="rounded-2xl p-6 mb-8"
-              style={{ backgroundColor: verdictConfig.color + '15', borderColor: verdictConfig.color, borderWidth: 2 }}
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <span className="text-4xl">{verdictConfig.emoji}</span>
-                <div>
-                  <h2 className="text-xl font-bold" style={{ color: verdictConfig.color }}>
-                    {verdictConfig.label}
-                  </h2>
-                  <p className="text-sm text-gray-600">{verdictConfig.description}</p>
-                </div>
-                <div className="ml-auto text-right">
-                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{result.verdict.confidence}%</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">{t.confidence}</div>
-                </div>
-              </div>
-            </div>
-            <p className="text-gray-700 dark:text-gray-300 mb-4">{result.verdict.core_conflict}</p>
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">📋 {t.actionPlan}</h3>
-              <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300">
-                {result.verdict.action_plan.map((action, i) => (
-                  <li key={i}>{action}</li>
-                ))}
-              </ol>
-            </div>
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                ⏱️ {result.execution_time_seconds.toFixed(1)}s | 🔄 {result.total_llm_calls} LLM calls
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleCopyAll}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors text-sm font-medium ${copied
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-                    }`}
-                  title="Скопировать весь анализ"
-                >
-                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  {copied ? 'Скопировано!' : 'Копировать'}
-                </button>
-                <button
-                  onClick={handleJudgeClick}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors text-sm font-medium"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  {t.chatWithJudge || 'Chat with Judge'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Agent Reports */}
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            🏰 {t.advisorsOpinions}
-            <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">{t.clickToChat}</span>
-          </h2>
-          <div className="space-y-3">
-            {result.agent_reports.map((report) => {
-              const agent = getAgentConfig(report.agent_name);
-              const stanceConfig = STANCE_CONFIG[report.stance];
-              return (
-                <div
-                  key={report.agent_name}
-                  onClick={() => handleAgentClick(agent.id, report)}
-                  className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer transition-colors"
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl">{agent.emoji}</span>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-gray-900 dark:text-gray-100">{report.agent_name}</span>
-                        <span style={{ color: stanceConfig.color }}>{stanceConfig.emoji} {report.stance}</span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">{t.risk}: {report.risk_score}%</span>
-                      </div>
-                      {report.insights.map((insight, i) => (
-                        <p key={i} className="text-sm text-gray-600 dark:text-gray-400 mb-1">└─ {insight}</p>
-                      ))}
-                    </div>
-                    <MessageCircle className="w-5 h-5 text-gray-400" />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
       </div>
 
-    );
-  }
+      <p className="text-sm text-gray-400 dark:text-gray-500">
+        Start typing below to chat with the group
+      </p>
+    </div>
+  );
 
-  // CHAT VIEW
-  if (view === 'chat' && activeAgent) {
-    const agent = activeAgent === 'judge'
-      ? JUDGE_AGENT
-      : DEFAULT_AGENTS.find(a => a.id === activeAgent)!;
+  return (
+    <div className="min-h-screen bg-white dark:bg-gray-950 flex">
+      <Sidebar />
 
-    return (
-      <div className="min-h-screen bg-white dark:bg-gray-950 flex">
-        <Sidebar />
+      {/* Overlay for mobile */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
 
-        {sidebarOpen && (
-          <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
-        )}
-
-        <div className="flex-1 flex flex-col">
-          {/* Header */}
-          <div className="border-b border-gray-200 dark:border-gray-800 px-6 py-4 flex items-center gap-3">
+      {/* Main content */}
+      <div className="flex-1 flex flex-col h-screen">
+        {/* Header */}
+        <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
               <Menu className="w-5 h-5" />
             </button>
             <button
-              onClick={() => setView('analysis')}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+              onClick={handleNewConversation}
+              className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2 hover:opacity-70 transition-opacity"
             >
-              <ArrowLeft className="w-5 h-5" />
+              🏰 RoundTable
             </button>
-            <span className="text-2xl">{agent.emoji}</span>
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-gray-100">{agent.name}</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{agent.description}</p>
-            </div>
           </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-3 ${msg.role === 'user'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-                    }`}
-                >
-                  {msg.role === 'user' ? (
-                    msg.content
-                  ) : (
-                    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2">
-                      <ReactMarkdown>
-                        {msg.content}
-                      </ReactMarkdown>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            {chatLoading && (
-              <div className="flex justify-start">
-                <div className="bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-3">
-                  <Loader2 className="w-5 h-5 animate-spin text-gray-500 dark:text-gray-400" />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Input */}
-          <div className="border-t border-gray-200 dark:border-gray-800 px-6 py-4">
-            <div className="flex gap-3">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleChatSend()}
-                placeholder={t.askQuestion}
-                className="flex-1 px-4 py-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-              />
-              <button
-                onClick={handleChatSend}
-                disabled={chatLoading || !chatInput.trim()}
-                className="bg-indigo-600 text-white px-4 py-3 rounded-xl hover:bg-indigo-700 disabled:opacity-50"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-              {result && (
-                <button
-                  onClick={handleCopyAll}
-                  className={`px-4 py-3 rounded-xl transition-colors flex items-center gap-2 ${copied
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-                    }`}
-                  title="Скопировать весь анализ"
-                >
-                  {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
-                </button>
-              )}
-            </div>
-          </div>
+          <SettingsDropdown
+            uiLanguage={uiLanguage}
+            language={language}
+            model="gpt-4o"
+            theme={theme}
+            onUiLanguageChange={(l) => { setUiLanguage(l); localStorage.setItem('roundtable-ui-language', l); }}
+            onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('roundtable-language', l); }}
+            onModelChange={() => { }}
+            onThemeChange={(t) => { setTheme(t); localStorage.setItem('roundtable-theme', t); }}
+          />
         </div>
-      </div>
-    );
-  }
 
-  return null;
+        {/* Messages area */}
+        <div className="flex-1 overflow-y-auto">
+          {messages.length === 0 ? (
+            <WelcomeScreen />
+          ) : (
+            <div className="max-w-4xl mx-auto px-4 py-6">
+              {messages.map((msg) => (
+                <ChatBubble
+                  key={msg.id}
+                  role={msg.role}
+                  content={msg.content}
+                  character={msg.character}
+                  emoji={msg.emoji}
+                  timestamp={msg.timestamp}
+                  onCharacterClick={insertMention}
+                />
+              ))}
+              {typingCharacter && (
+                <TypingIndicator
+                  character={typingCharacter.name}
+                  emoji={typingCharacter.emoji}
+                />
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </div>
+
+        {/* Input */}
+        <ChatInput
+          ref={chatInputRef}
+          onSend={handleSend}
+          loading={loading}
+          placeholder={t.placeholder}
+        />
+      </div>
+    </div>
+  );
 }

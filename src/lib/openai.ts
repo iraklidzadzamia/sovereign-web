@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
-import { AgentReport, FinalVerdict } from '@/types';
-import { DEFAULT_AGENTS } from './constants';
+import { DbAgent } from './supabase';
 
 // Lazy initialization to avoid build errors without API key
 let _openai: OpenAI | null = null;
@@ -16,7 +15,7 @@ function getOpenAI(): OpenAI {
 }
 
 const MODEL = process.env.MODEL_PRIMARY || 'gpt-4o';
-const LANGUAGE = process.env.OUTPUT_LANGUAGE || 'ru';
+const SUMMARIZE_MODEL = 'gpt-4o-mini'; // Cheaper model for summarization
 
 const LANGUAGE_NAMES: Record<string, string> = {
     ru: 'Русский',
@@ -30,185 +29,341 @@ function getLanguageInstruction(lang: string): string {
     return `\n\nIMPORTANT: Respond ONLY in ${langName} (${lang}). All text must be in ${langName}.`;
 }
 
-export async function runAgent(
-    agentId: string,
-    userInput: string,
-    language: string = LANGUAGE
-): Promise<AgentReport> {
-    const agent = DEFAULT_AGENTS.find(a => a.id === agentId);
-    if (!agent) throw new Error(`Unknown agent: ${agentId}`);
-
-    const systemPrompt = agent.prompt + getLanguageInstruction(language);
-
-    const userPrompt = `Analyze this business idea through your specific lens:
-
-${userInput}
-
-OUTPUT — Return ONLY valid JSON matching this exact schema:
-{
-  "agent_name": "${agent.name}",
-  "stance": "YES" | "NO" | "MIXED",
-  "risk_score": 0-100,
-  "confidence": "LOW" | "MEDIUM" | "HIGH",
-  "one_liner": "your verdict in one sentence",
-  "insights": ["3-5 specific bullets, no generic advice"],
-  "assumptions": ["1-3 things that MUST be true for this to work"],
-  "unknowns": ["1-3 questions you cannot answer with given info"],
-  "next_step": "one concrete action doable within 48 hours"
+export interface ChatMessage {
+    role: 'user' | 'assistant';
+    content: string;
+    character?: string; // For assistant messages, which character said it
 }
 
-RULES:
-- Do not include any keys not listed above.
-- All array values must be strings.
-- Be concise. If uncertain, say so under unknowns — do not hedge in other fields.`;
+interface CharacterResponse {
+    character: string;
+    message: string;
+}
+
+// Cache for conversation summaries
+const summaryCache = new Map<string, string>();
+
+/**
+ * Summarize old messages to save context space
+ * Uses cheaper model for summarization
+ */
+async function summarizeOldMessages(
+    messages: ChatMessage[],
+    language: string
+): Promise<string> {
+    // Create cache key from first few messages
+    const cacheKey = messages.slice(0, 3).map(m => m.content.slice(0, 50)).join('|');
+
+    if (summaryCache.has(cacheKey)) {
+        console.log('Using cached summary');
+        return summaryCache.get(cacheKey)!;
+    }
+
+    const historyText = messages.map(m => {
+        if (m.role === 'user') {
+            return `User: ${m.content}`;
+        } else {
+            return `${m.character || 'Assistant'}: ${m.content}`;
+        }
+    }).join('\n');
 
     const response = await getOpenAI().chat.completions.create({
-        model: MODEL,
+        model: SUMMARIZE_MODEL,
         messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
+            {
+                role: 'system',
+                content: `Summarize this conversation in 2-3 sentences. Focus on:
+- Main topics discussed
+- Key decisions or conclusions
+- Important context for continuing the conversation
+
+Keep it brief and in ${LANGUAGE_NAMES[language] || language}.`
+            },
+            { role: 'user', content: historyText }
         ],
-        response_format: { type: 'json_object' },
-        max_completion_tokens: 1500,
+        max_completion_tokens: 200,
     });
 
-    const content = response.choices[0].message.content || '{}';
-    const raw = JSON.parse(content);
+    const summary = response.choices[0].message.content || '';
 
-    // Helper to ensure array contains only strings
-    const toStringArray = (arr: unknown, max: number): string[] => {
-        if (!Array.isArray(arr)) return [];
-        return arr.filter((x): x is string => typeof x === 'string').slice(0, max);
-    };
+    // Cache the result
+    summaryCache.set(cacheKey, summary);
 
-    // Validate and normalize the response
-    return {
-        agent_name: agent.name, // Never trust model for this - we know the agent
-        stance: ['YES', 'NO', 'MIXED'].includes(raw.stance) ? raw.stance : 'MIXED',
-        risk_score: typeof raw.risk_score === 'number' ? Math.min(100, Math.max(0, raw.risk_score)) : 50,
-        confidence: ['LOW', 'MEDIUM', 'HIGH'].includes(raw.confidence) ? raw.confidence : 'MEDIUM',
-        one_liner: typeof raw.one_liner === 'string' && raw.one_liner
-            ? raw.one_liner
-            : toStringArray(raw.insights, 1)[0] || 'No summary provided',
-        insights: toStringArray(raw.insights, 5),
-        assumptions: toStringArray(raw.assumptions, 3).length > 0 ? toStringArray(raw.assumptions, 3) : undefined,
-        unknowns: toStringArray(raw.unknowns, 3).length > 0 ? toStringArray(raw.unknowns, 3) : undefined,
-        next_step: typeof raw.next_step === 'string' ? raw.next_step : undefined,
-    };
+    console.log('Generated summary:', summary.substring(0, 100));
+    return summary;
 }
 
-export async function runAllAgents(
-    userInput: string,
-    language: string = LANGUAGE
-): Promise<AgentReport[]> {
-    const promises = DEFAULT_AGENTS.map(agent =>
-        runAgent(agent.id, userInput, language).catch(err => ({
-            agent_name: agent.name,
-            stance: 'MIXED' as const,
-            risk_score: 50,
-            confidence: 'LOW' as const,
-            one_liner: `Error: ${err.message.slice(0, 100)}`,
-            insights: [`Analysis failed: ${err.message.slice(0, 100)}`],
-        }))
-    );
+/**
+ * Prepare conversation history with optional summarization
+ * If history > 25 messages: summarize first part, keep last 20 full
+ */
+async function prepareHistoryContext(
+    messages: ChatMessage[],
+    language: string
+): Promise<string> {
+    const FULL_HISTORY_LIMIT = 20;
+    const SUMMARIZE_THRESHOLD = 25;
 
-    return Promise.all(promises);
+    // Exclude last message (will be sent separately as current user message)
+    const historyMessages = messages.slice(0, -1);
+
+    if (historyMessages.length <= SUMMARIZE_THRESHOLD) {
+        // Short history - use full messages
+        return formatChatHistory(historyMessages);
+    }
+
+    // Long history - summarize old part
+    const oldMessages = historyMessages.slice(0, -FULL_HISTORY_LIMIT);
+    const recentMessages = historyMessages.slice(-FULL_HISTORY_LIMIT);
+
+    console.log(`Summarizing ${oldMessages.length} old messages, keeping ${recentMessages.length} recent`);
+
+    const summary = await summarizeOldMessages(oldMessages, language);
+    const recentHistory = formatChatHistory(recentMessages);
+
+    return `[Earlier conversation summary: ${summary}]\n\n${recentHistory}`;
 }
 
-export async function runJudge(
-    reports: AgentReport[],
-    userInput: string,
-    language: string = LANGUAGE
-): Promise<FinalVerdict> {
-    const systemPrompt = `You are THE SUPREME JUDGE — final synthesizer of all 10 advisor perspectives. Your job is to deliver a verdict based on evidence, not vibes.
+/**
+ * Build the master system prompt that orchestrates all characters
+ */
+function buildMasterPrompt(agents: DbAgent[], language: string): string {
+    const characterDescriptions = agents.map(agent =>
+        `### ${agent.name} (${agent.emoji})
+${agent.prompt}`
+    ).join('\n\n');
 
-YOUR LENS: "What is the best decision under uncertainty?"
+    const characterNames = agents.map(a => a.name).join(', ');
 
-METHODOLOGY — Synthesis process:
-1. Identify the STRONGEST argument FOR this idea (cite which advisor)
-2. Identify the STRONGEST concern AGAINST this idea (cite which advisor)
-3. Extract top 3 CONSENSUS points (themes repeated across advisors)
-4. Extract top 2 CONFLICTS (where advisors disagree) and name what data would resolve it
-5. Apply JUDGMENT — which concerns are fatal vs. mitigatable?
+    return `You are orchestrating a group chat with ${agents.length} unique characters: ${characterNames}.
 
-SIGNAL DEFINITIONS:
-- 🟢 GREEN: No fatal risks. Assumptions testable. Upside outweighs downside. "Proceed with confidence."
-- 🟡 YELLOW: Potentially viable, but 2-3 key unknowns MUST be resolved first. "Proceed with caution."
-- 🟠 SOFT_RED: Current form is flawed. Requires major pivot (customer/offer/distribution/model). "Rethink before proceeding." Name the single pivot that could move this to YELLOW.
-- 🔴 HARD_RED: Fatal issues with no realistic mitigation (illegal, unworkable economics, blocked distribution). "Do not proceed."
+## CHARACTERS:
 
-CRITICAL RULES:
-- Do NOT invent facts to resolve conflicts
-- If evidence is insufficient, choose YELLOW and list what's missing
-- This is NOT a moral verdict — it's "readiness to proceed given current info"
-- If SOFT_RED or HARD_RED, you MUST name what pivot could change the verdict
+${characterDescriptions}
 
-PERSONALITY: Decisive but transparent. No theatrics. Evidence-based.` + getLanguageInstruction(language);
+## CRITICAL: DETECT USER INTENT FIRST
 
-    // Build structured summary with full report data
-    const structuredReports = reports.map(r => ({
-        agent: r.agent_name,
-        stance: r.stance,
-        risk_score: r.risk_score,
-        confidence: r.confidence,
-        one_liner: r.one_liner,
-        insights: r.insights,
-        assumptions: r.assumptions,
-        unknowns: r.unknowns,
-        next_step: r.next_step,
+Before generating responses, you MUST analyze the user's message to detect their INTENT.
+
+### 1-ON-1 MODE — ONLY ONE character responds
+
+**Detect 1-on-1 when user:**
+- Addresses a character BY NAME (any language/spelling): "Сократ,", "sokrat", "hey Shark", "Шарк", "оператор"
+- Asks a character DIRECTLY: "что ты думаешь, Сократ?", "Shark what's your take?", "как думаешь sokrat"
+- Uses phrases suggesting private talk: "давай поговорим", "let's talk", "хочу спросить тебя", "поговорим"
+- Continues a conversation with ONE character from context
+
+**Name variations to recognize:**
+- Socrates = Сократ, sokrat, сократа
+- Shark = Шарк, акула
+- Operator = Оператор
+- Guardian = Хранитель, гардиан
+- Futurist = Футурист
+- Skeptic = Скептик
+- Storyteller = Рассказчик
+- Archaeologist = Археолог
+- Black Swan = Чёрный лебедь, лебедь
+- Broker = Брокер
+
+**IF 1-ON-1 DETECTED: Return ONLY that one character's response. This is mandatory.**
+
+### GROUP MODE — 2-5 characters respond
+
+**Use group mode when:**
+- User asks a general question to everyone
+- No specific character is addressed
+- New topic without addressing anyone
+
+**SMART CONTEXT RULE:**
+If user sends a message without addressing anyone specific (like "kstati pro dengi" or "а что насчёт..."), look at WHO RESPONDED in the last 3-5 messages. Those characters should respond again, as they are part of the ongoing conversation. Don't randomly bring in new characters unless the topic changed significantly.
+
+### CLARIFY MODE — Judge asks for clarification (RARE)
+
+**Use clarify mode ONLY when:**
+- Intent is genuinely ambiguous and could go either way
+- You cannot determine from context who should respond
+- Important decision that user should make explicitly
+
+Return:
+{"mode": "clarify", "clarification_question": "Ты хочешь спросить [X и Y] или всю группу?", "responses": []}
+
+**IMPORTANT: Use clarify mode VERY RARELY. Most cases can be inferred from context.**
+
+## OUTPUT FORMAT
+
+You MUST return valid JSON:
+
+{
+  "mode": "1-on-1" | "group" | "clarify",
+  "target": "CharacterName" | null,
+  "clarification_question": "..." | null,
+  "responses": [
+    {"character": "CharacterName", "message": "Their response..."}
+  ]
+}
+
+## RULES
+
+1. **Intent over keywords**: Understand WHAT the user wants, detect the intent
+2. **Strict 1-on-1**: If you detect 1-on-1 intent, return ONLY that character. No exceptions.
+3. **Smart context**: If no addressee, recent responders continue the conversation
+4. **Natural chat**: Keep responses 1-3 sentences, like real messaging
+5. **Stay in character**: Each character has a unique voice
+6. **Match language**: Respond in user's language
+7. **Clarify rarely**: Only when genuinely ambiguous` + getLanguageInstruction(language);
+}
+
+/**
+ * Format chat history for the context window
+ */
+function formatChatHistory(messages: ChatMessage[]): string {
+    return messages.map(m => {
+        if (m.role === 'user') {
+            return `User: ${m.content}`;
+        } else {
+            return `${m.character || 'Assistant'}: ${m.content}`;
+        }
+    }).join('\n\n');
+}
+
+/**
+ * Main group chat function - single GPT call with intent detection in prompt
+ */
+export async function groupChat(
+    agents: DbAgent[],
+    messages: ChatMessage[],
+    language: string = 'ru'
+): Promise<CharacterResponse[]> {
+    if (messages.length === 0) {
+        return [];
+    }
+
+    const lastUserMessage = messages[messages.length - 1];
+
+    // Build master prompt with intent detection built-in
+    const systemPrompt = buildMasterPrompt(agents, language);
+
+    // Prepare history with summarization for long conversations
+    const historyContext = await prepareHistoryContext(messages, language);
+
+    const userPrompt = historyContext
+        ? `Previous conversation:\n${historyContext}\n\nNow the user says:\n${lastUserMessage.content}`
+        : `The user starts the conversation with:\n${lastUserMessage.content}`;
+
+    console.log('Calling OpenAI with prompt length:', systemPrompt.length + userPrompt.length);
+
+    // Retry logic for OpenAI calls
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const response = await getOpenAI().chat.completions.create({
+                model: MODEL,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt },
+                ],
+                response_format: { type: 'json_object' },
+                max_completion_tokens: 2000,
+            });
+
+            const content = response.choices[0].message.content || '{}';
+            console.log('OpenAI raw response:', content.substring(0, 500));
+
+            // Parse the response
+            const parsed = JSON.parse(content);
+            console.log('Parsed - mode:', parsed.mode, 'target:', parsed.target);
+
+            // Handle various response formats
+            let responses: unknown[];
+            if (Array.isArray(parsed)) {
+                responses = parsed;
+            } else if (parsed.responses && Array.isArray(parsed.responses)) {
+                responses = parsed.responses;
+            } else if (parsed.characters && Array.isArray(parsed.characters)) {
+                responses = parsed.characters;
+            } else {
+                const keys = Object.keys(parsed);
+                if (parsed.character && parsed.message) {
+                    responses = [parsed];
+                } else {
+                    const arrayKey = keys.find(k => Array.isArray(parsed[k]));
+                    if (arrayKey) {
+                        responses = parsed[arrayKey];
+                    } else {
+                        console.log('Unexpected response format:', JSON.stringify(parsed).substring(0, 200));
+                        responses = [];
+                    }
+                }
+            }
+
+            console.log('Found responses count:', responses.length);
+
+            // Validate and normalize responses
+            let validated = responses
+                .filter((r: unknown): r is CharacterResponse =>
+                    r !== null &&
+                    typeof r === 'object' &&
+                    'character' in r &&
+                    'message' in r &&
+                    typeof (r as CharacterResponse).character === 'string' &&
+                    typeof (r as CharacterResponse).message === 'string'
+                )
+                .map((r: CharacterResponse) => ({
+                    character: r.character,
+                    message: r.message
+                }));
+
+            // 1-ON-1 VALIDATION: If mode is 1-on-1 but we got multiple responses, keep only first
+            if (parsed.mode === '1-on-1' && validated.length > 1) {
+                console.log('1-on-1 mode but got multiple responses, keeping only first');
+                validated = [validated[0]];
+            }
+
+            console.log('Final responses count:', validated.length);
+            return validated;
+
+        } catch (e) {
+            lastError = e instanceof Error ? e : new Error(String(e));
+            console.error(`Attempt ${attempt + 1} failed:`, lastError.message);
+
+            // Wait before retry
+            if (attempt < 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+    }
+
+    // All retries failed
+    console.error('All retry attempts failed:', lastError);
+    return [{
+        character: 'System',
+        message: 'Sorry, I had trouble generating responses. Please try again.'
+    }];
+}
+
+/**
+ * Chat with a single agent in 1-on-1 mode (backup, now mainly handled by LLM)
+ */
+export async function chatWithSingleAgent(
+    agent: DbAgent,
+    messages: ChatMessage[],
+    language: string = 'ru'
+): Promise<string> {
+    const systemPrompt = agent.prompt + `
+
+You are now in a direct conversation. Respond naturally as ${agent.name}.
+Be concise but insightful. Stay in character.` + getLanguageInstruction(language);
+
+    const formattedMessages = messages.map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content
     }));
 
-    const userPrompt = `=== ORIGINAL IDEA ===
-${userInput.slice(0, 1500)}
-
-=== 10 ADVISOR REPORTS (full data) ===
-${JSON.stringify(structuredReports, null, 2)}
-
-Based on all data above, synthesize and issue your verdict.
-
-OUTPUT — Return ONLY valid JSON:
-{
-  "signal": "GREEN" | "YELLOW" | "SOFT_RED" | "HARD_RED",
-  "confidence": 0-100,
-  "core_conflict": "the central issue in one sentence",
-  "deciding_factor": "what tipped the scales",
-  "action_plan": ["exactly 3 concrete, reversible steps"],
-  "reasoning": "2-4 sentences citing advisors by name",
-  "dissent_note": "if any strong minority view exists, state it; otherwise 'None'"
-}`;
-
     const response = await getOpenAI().chat.completions.create({
         model: MODEL,
         messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-        ],
-        response_format: { type: 'json_object' },
-        max_completion_tokens: 2000,
-    });
-
-    const content = response.choices[0].message.content || '{}';
-    return JSON.parse(content) as FinalVerdict;
-}
-
-export async function chatWithAgent(
-    agentId: string,
-    messages: { role: 'user' | 'assistant'; content: string }[],
-    language: string = LANGUAGE
-): Promise<string> {
-    const agent = DEFAULT_AGENTS.find(a => a.id === agentId);
-    if (!agent) throw new Error(`Unknown agent: ${agentId}`);
-
-    const systemPrompt = agent.prompt + getLanguageInstruction(language) + `
-
-You are now in a follow-up conversation. Continue advising based on your expertise.
-Be concise but insightful. Ask clarifying questions if needed.`;
-
-    const response = await getOpenAI().chat.completions.create({
-        model: MODEL,
-        messages: [
-            { role: 'system', content: systemPrompt },
-            ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+            ...formattedMessages,
         ],
         max_completion_tokens: 1000,
     });
@@ -216,63 +371,5 @@ Be concise but insightful. Ask clarifying questions if needed.`;
     return response.choices[0].message.content || '';
 }
 
-export async function chatWithJudge(
-    messages: { role: 'user' | 'assistant'; content: string }[],
-    context: {
-        originalInput: string;
-        reports: AgentReport[];
-        verdict: FinalVerdict;
-    },
-    language: string = LANGUAGE
-): Promise<string> {
-    // Build context summary for Judge
-    const reportsContext = context.reports.map(r =>
-        `${r.agent_name} (${r.stance}, Risk: ${r.risk_score}%): ${r.one_liner}`
-    ).join('\n');
-
-    const systemPrompt = `You are THE SUPREME JUDGE — the final synthesizer who has already reviewed all 10 advisor perspectives and issued a verdict.
-
-### CONTEXT YOU HAVE ACCESS TO:
-
-**Original Question/Idea:**
-${context.originalInput.slice(0, 1000)}
-
-**Your Verdict:** ${context.verdict.signal} (${context.verdict.confidence}% confidence)
-**Core Conflict:** ${context.verdict.core_conflict}
-**Reasoning:** ${context.verdict.reasoning}
-
-**Advisor Summary:**
-${reportsContext}
-
-### IN THIS FOLLOW-UP CONVERSATION:
-1. Clarify your reasoning and why you weighted certain advisors more than others
-2. Answer deeper questions about specific risks or opportunities
-3. Help the user decide on next steps
-4. If they provide new information, consider whether it changes your verdict
-
-PERSONALITY: Authoritative but approachable. You've made your decision and can defend it with specific advisor insights.
-
-RULES:
-- Reference specific advisors by name when relevant
-- Be concise but thorough
-- Don't repeat the full verdict, focus on their specific questions` + getLanguageInstruction(language);
-
-    // Limit conversation history to last 10 messages to prevent token overflow
-    const recentMessages = messages.slice(-10);
-
-    try {
-        const response = await getOpenAI().chat.completions.create({
-            model: MODEL,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                ...recentMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-            ],
-            max_completion_tokens: 2000,
-        });
-
-        return response.choices[0].message.content || 'No response received';
-    } catch (error) {
-        console.error('Judge chat error:', error);
-        throw new Error(`Judge could not respond: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-}
+// Legacy exports for backward compatibility during migration
+export { getOpenAI };
