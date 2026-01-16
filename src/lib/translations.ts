@@ -17,7 +17,13 @@ export const translations = {
 
         // Input Area
         describeIdea: "Describe your idea",
-        placeholder: "Example: I want to open a Georgian bakery in Germany...",
+        placeholders: [
+            "Example: I'm facing a tough decision and need advice...",
+            "Example: Analyze my idea from different perspectives...",
+            "Example: I need help resolving a complex situation...",
+            "Example: Critique my plan and point out the risks...",
+            "Example: Help me brainstorm solutions for a problem..."
+        ],
         startAnalysis: "Start Analysis",
         analyzing: "Analyzing...",
 
@@ -67,7 +73,13 @@ export const translations = {
 
         // Input Area
         describeIdea: "Опиши свою идею",
-        placeholder: "Например: Хочу открыть грузинскую пекарню в Германии...",
+        placeholders: [
+            "Например: Стою перед сложным выбором и нужен совет...",
+            "Например: Проанализируйте мою идею с разных сторон...",
+            "Например: Нужна помощь в разрешении сложной ситуации...",
+            "Например: Критически оцените мой план и укажите риски...",
+            "Например: Помогите найти нестандартное решение проблемы..."
+        ],
         startAnalysis: "Запустить анализ",
         analyzing: "Анализируем...",
 
@@ -117,7 +129,13 @@ export const translations = {
 
         // Input Area
         describeIdea: "აღწერეთ თქვენი იდეა",
-        placeholder: "მაგალითად: მინდა გავხსნა ქართული საცხობი გერმანიაში...",
+        placeholders: [
+            "მაგალითად: რთული გადაწყვეტილების წინაშე ვდგავარ...",
+            "მაგალითად: გააანალიზეთ ჩემი იდეა სხვადასხვა კუთხით...",
+            "მაგალითად: მჭირდება დახმარება რთული სიტუაციის მოგვარებაში...",
+            "მაგალითად: შეაფასეთ ჩემი გეგმა და მიუთითეთ რისკები...",
+            "მაგალითად: დამეხმარეთ პრობლემის გადაჭრის გზების მოძიებაში..."
+        ],
         startAnalysis: "ანალიზის დაწყება",
         analyzing: "მუშავდება...",
 

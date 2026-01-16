@@ -66,6 +66,9 @@ export default function Home() {
   const [showAgentEditor, setShowAgentEditor] = useState(false);
   const [editorMode, setEditorMode] = useState<'create' | 'edit'>('create');
 
+  // Random placeholder logic
+  const [placeholderText, setPlaceholderText] = useState('');
+
   // Localization map for default characters
   const CHARACTER_TRANSLATIONS: Record<string, Record<string, string>> = {
     'Socrates': { ru: 'Сократ', ka: 'სოკრატე' },
@@ -128,6 +131,14 @@ export default function Home() {
     loadConversations();
     loadAgents();
   }, []);
+
+  // Update placeholder on language change
+  useEffect(() => {
+    const t = translations[uiLanguage];
+    if (t.placeholders && t.placeholders.length > 0) {
+      setPlaceholderText(t.placeholders[Math.floor(Math.random() * t.placeholders.length)]);
+    }
+  }, [uiLanguage]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -619,7 +630,7 @@ export default function Home() {
           ref={chatInputRef}
           onSend={handleSend}
           loading={loading}
-          placeholder={t.placeholder}
+          placeholder={placeholderText}
         />
       </div>
       <AgentEditor
