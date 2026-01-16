@@ -108,8 +108,15 @@ export default function AgentEditor({ agent, isOpen, onClose, onSave, onDelete }
     };
 
     const handleNameBlur = () => {
-        if (name && !agent && !description && !prompt) {
-            generateDetails(name);
+        // Trigger if:
+        // 1. New agent (no agent) and fields empty
+        // 2. Existing agent and name changed
+        if (name && !generating) {
+            if (!agent && !description && !prompt) {
+                generateDetails(name);
+            } else if (agent && name.trim() !== agent.name.trim()) {
+                generateDetails(name);
+            }
         }
     };
 
@@ -192,7 +199,7 @@ export default function AgentEditor({ agent, isOpen, onClose, onSave, onDelete }
                                             <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
                                         </div>
                                     )}
-                                    {!generating && name && !agent && (
+                                    {!generating && name && (
                                         <button
                                             type="button"
                                             onClick={() => generateDetails(name)}
