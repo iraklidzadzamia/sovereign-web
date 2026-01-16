@@ -14,6 +14,9 @@ import {
   addMessage,
   getMessages,
   updateConversation,
+  updateAgent,
+  createAgent,
+  deleteAgent,
   DbAgent,
   DbConversation
 } from '@/lib/supabase';
@@ -21,6 +24,7 @@ import SettingsDropdown from '@/components/SettingsDropdown';
 import ChatBubble from '@/components/ChatBubble';
 import ChatInput, { ChatInputRef } from '@/components/ChatInput';
 import TypingIndicator from '@/components/TypingIndicator';
+import AgentEditor from '@/components/AgentEditor';
 import { translations, Language } from '@/lib/translations';
 
 interface Message {
@@ -55,6 +59,30 @@ export default function Home() {
 
   // Agents state
   const [agents, setAgents] = useState<DbAgent[]>([]);
+
+  // Agent Editing State
+  const [isEditingMode, setIsEditingMode] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<DbAgent | null>(null);
+  const [showAgentEditor, setShowAgentEditor] = useState(false);
+  const [editorMode, setEditorMode] = useState<'create' | 'edit'>('create');
+
+  // Localization map for default characters
+  const CHARACTER_TRANSLATIONS: Record<string, Record<string, string>> = {
+    'Socrates': { ru: 'Сократ', ka: 'სოკრატე' },
+    'Shark': { ru: 'Акула Бизнеса', ka: 'ბიზნეს ზვიგენი' },
+    'Futurist': { ru: 'Футурист', ka: 'ფუტურისტი' },
+    'Skeptic': { ru: 'Скептик', ka: 'სკეპტიკოსი' },
+    'Operator': { ru: 'Оператор', ka: 'ოპერატორი' },
+    'Black Swan': { ru: 'Черный Лебедь', ka: 'შავი გედი' },
+    'Storyteller': { ru: 'Рассказчик', ka: 'მთხრობელი' },
+    'Archaeologist': { ru: 'Археолог', ka: 'არქეოლოგი' },
+    'Guardian': { ru: 'Хранитель', ka: 'მცველი' },
+    'Broker': { ru: 'Брокер', ka: 'ბროკერი' },
+  };
+
+  const getLocalizedName = (name: string) => {
+    return CHARACTER_TRANSLATIONS[name]?.[uiLanguage] || name;
+  };
 
   // Load settings from localStorage
   useEffect(() => {
@@ -115,6 +143,49 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to load agents:', error);
     }
+  };
+
+  const handleSaveAgent = async (agentData: Partial<DbAgent>) => {
+    try {
+      if (editorMode === 'edit' && agentData.id) {
+        await updateAgent(agentData.id, agentData);
+      } else {
+        await createAgent({
+          name: agentData.name!,
+          emoji: agentData.emoji!,
+          description: agentData.description!,
+          prompt: agentData.prompt!,
+          sort_order: agents.length + 1,
+          image_url: agentData.image_url ?? ''
+        });
+      }
+      await loadAgents();
+      setShowAgentEditor(false);
+    } catch (error) {
+      console.error('Failed to save agent:', error);
+    }
+  };
+
+  const handleDeleteAgent = async (id: string) => {
+    try {
+      await deleteAgent(id);
+      await loadAgents();
+      setShowAgentEditor(false);
+    } catch (error) {
+      console.error('Failed to delete agent:', error);
+    }
+  };
+
+  const openNewAgentEditor = () => {
+    setEditorMode('create');
+    setEditingAgent(null);
+    setShowAgentEditor(true);
+  };
+
+  const openEditAgentEditor = (agent: DbAgent) => {
+    setEditorMode('edit');
+    setEditingAgent(agent);
+    setShowAgentEditor(true);
   };
 
   const loadConversations = async () => {
@@ -421,23 +492,56 @@ export default function Home() {
         {t.subtitle}
       </p>
 
-      {/* Show agents - clickable to insert @mention */}
+      {/* Show agents - clickable to insert @mention OR edit */}
       <div className="flex flex-wrap justify-center gap-3 mb-8">
-        {agents.slice(0, 6).map(agent => (
+        {agents.map(agent => (
           <button
             key={agent.id}
-            onClick={() => insertMention(agent.name)}
-            className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-full text-sm hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:scale-105 transition-all cursor-pointer"
+            onClick={() => isEditingMode ? openEditAgentEditor(agent) : insertMention(agent.name)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm transition-all cursor-pointer relative group ${isEditingMode
+              ? 'bg-indigo-50 dark:bg-indigo-900/30 ring-1 ring-indigo-500 hover:bg-indigo-100'
+              : 'bg-gray-100 dark:bg-gray-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:scale-105'
+              }`}
           >
             <span>{agent.emoji}</span>
-            <span className="text-gray-700 dark:text-gray-300">{agent.name}</span>
+            <span className="text-gray-700 dark:text-gray-300">{getLocalizedName(agent.name)}</span>
+            {isEditingMode && (
+              <Pencil className="w-3 h-3 ml-1 text-indigo-500" />
+            )}
           </button>
         ))}
-        {agents.length > 6 && (
-          <div className="flex items-center px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-full text-sm text-gray-500">
-            +{agents.length - 6} more
-          </div>
+
+        {isEditingMode && (
+          <button
+            onClick={openNewAgentEditor}
+            className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 dark:border-gray-700 rounded-full text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-all text-gray-500"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Character</span>
+          </button>
         )}
+      </div>
+
+      <div className="flex justify-center mb-6 mt-4">
+        <button
+          onClick={() => setIsEditingMode(!isEditingMode)}
+          className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${isEditingMode
+            ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'
+            : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/10 dark:text-indigo-400 dark:hover:bg-indigo-900/20'
+            }`}
+        >
+          {isEditingMode ? (
+            <>
+              <Check className="w-3 h-3" />
+              Done Editing
+            </>
+          ) : (
+            <>
+              <Settings className="w-3 h-3" />
+              Customize Characters
+            </>
+          )}
+        </button>
       </div>
 
       <p className="text-sm text-gray-400 dark:text-gray-500">
@@ -518,6 +622,13 @@ export default function Home() {
           placeholder={t.placeholder}
         />
       </div>
+      <AgentEditor
+        isOpen={showAgentEditor}
+        onClose={() => setShowAgentEditor(false)}
+        onSave={handleSaveAgent}
+        onDelete={editorMode === 'edit' ? handleDeleteAgent : undefined}
+        agent={editingAgent}
+      />
     </div>
   );
 }

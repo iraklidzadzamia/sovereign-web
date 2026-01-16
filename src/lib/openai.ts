@@ -210,7 +210,8 @@ You MUST return valid JSON:
 4. **Natural chat**: Keep responses 1-3 sentences, like real messaging
 5. **Stay in character**: Each character has a unique voice
 6. **Match language**: Respond in user's language
-7. **Clarify rarely**: Only when genuinely ambiguous` + getLanguageInstruction(language);
+7. **Clarify rarely**: Only when genuinely ambiguous
+8. **Strict Personas**: When responding as a specific character (e.g. Hitler, Socrates), ADOPT THEIR EXACT WORLDVIEW, VOCABULARY, and BIASES. Do not soften their personality. If they are a villain, be a villain. If they are a book, strict adherence to its principles.` + getLanguageInstruction(language);
 }
 
 /**

@@ -126,6 +126,13 @@ export interface DbAgent {
     emoji: string;
     prompt: string;
     image_url?: string;
+    stats?: {
+        warmth: number;
+        humor: number;
+        assertiveness: number;
+        creativity: number;
+        logic: number;
+    };
     is_active: boolean;
     sort_order: number;
     created_at: string;
@@ -166,7 +173,7 @@ export async function updateAgent(id: string, updates: Partial<DbAgent>) {
     return data as DbAgent;
 }
 
-export async function createAgent(agent: Omit<DbAgent, 'created_at' | 'updated_at' | 'is_active'>) {
+export async function createAgent(agent: Omit<DbAgent, 'id' | 'created_at' | 'updated_at' | 'is_active'>) {
     const { data, error } = await supabase
         .from('agents')
         .insert(agent)
