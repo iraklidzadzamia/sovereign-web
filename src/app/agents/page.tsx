@@ -59,7 +59,6 @@ export default function AgentsPage() {
     const handleAddNew = async () => {
         try {
             const newAgent = await createAgent({
-                id: `agent_${Date.now()}`,
                 name: 'Новый советник',
                 description: 'Описание...',
                 emoji: '🤖',
