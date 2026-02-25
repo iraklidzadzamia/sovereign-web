@@ -600,18 +600,18 @@ export default function Home() {
           {isEditingMode ? (
             <>
               <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              Done Editing
+              {t.doneEditing}
             </>
           ) : (
             <>
               <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              Customize Characters
+              {t.customizeCharacters}
             </>
           )}
         </button>
 
         <p className="text-[12px] sm:text-sm text-gray-400 dark:text-gray-500 px-4">
-          Start typing below to chat with the group
+          {t.startTyping}
         </p>
       </div>
     </div>

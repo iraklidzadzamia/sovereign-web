@@ -29,6 +29,9 @@ export const translations = {
 
         // Main Content
         roundTableTitle: "Round Table (10 advisors)",
+        customizeCharacters: "Customize Characters",
+        doneEditing: "Done Editing",
+        startTyping: "Start typing below to chat with the group",
 
         // Settings
         interfaceLanguage: "Interface Language",
@@ -118,6 +121,9 @@ export const translations = {
 
         // Main Content
         roundTableTitle: "Круглый стол (10 советников)",
+        customizeCharacters: "Настроить персонажей",
+        doneEditing: "Готово",
+        startTyping: "Начни печатать ниже, чтобы общаться с группой",
 
         // Settings
         interfaceLanguage: "Язык интерфейса",
@@ -207,6 +213,9 @@ export const translations = {
 
         // Main Content
         roundTableTitle: "მრგვალი მაგიდა (10 მრჩეველი)",
+        customizeCharacters: "პერსონაჟების მორგება",
+        doneEditing: "დასრულება",
+        startTyping: "დაიწყეთ წერა ჯგუფთან სასაუბროდ",
 
         // Settings
         interfaceLanguage: "ინტერფეისის ენა",
