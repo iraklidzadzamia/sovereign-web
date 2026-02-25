@@ -79,7 +79,7 @@ const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(
                             placeholder={placeholder || 'Type a message...'}
                             disabled={disabled || loading}
                             rows={1}
-                            className={`w-full resize-none rounded-[2rem] border-0 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_15px_-3px_rgba(0,0,0,0.3)] bg-white dark:bg-[#121212] px-4 sm:px-6 py-3 sm:py-3.5 text-[14px] sm:text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:shadow-[0_4px_20px_-3px_rgba(79,70,229,0.1)] disabled:opacity-50 disabled:cursor-not-allowed transition-all leading-normal ${!message ? 'whitespace-nowrap overflow-hidden' : ''}`}
+                            className={`w-full resize-none rounded-[2rem] border-0 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_15px_-3px_rgba(0,0,0,0.3)] bg-white dark:bg-[#121212] px-4 sm:px-6 py-3 sm:py-3.5 text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:shadow-[0_4px_20px_-3px_rgba(79,70,229,0.1)] disabled:opacity-50 disabled:cursor-not-allowed transition-all leading-normal ${!message ? 'whitespace-nowrap overflow-hidden' : ''}`}
                             style={{ minHeight: '48px', maxHeight: '150px' }}
                         />
                     </div>
