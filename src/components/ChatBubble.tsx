@@ -34,7 +34,7 @@ export default function ChatBubble({
             {!isUser && (
                 <button
                     onClick={handleAvatarClick}
-                    className={`flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 flex items-center justify-center text-xl shadow-sm transition-all ${onCharacterClick ? 'cursor-pointer hover:scale-110 hover:ring-2 hover:ring-indigo-400' : ''
+                    className={`flex-shrink-0 w-10 h-10 rounded-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700/50 flex items-center justify-center text-xl shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] dark:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.3)] transition-all ${onCharacterClick ? 'cursor-pointer hover:scale-110 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-500/50' : ''
                         }`}
                     title={onCharacterClick ? `Click to mention @${character?.toLowerCase()}` : undefined}
                 >
@@ -55,11 +55,11 @@ export default function ChatBubble({
                     </button>
                 )}
 
-                {/* Message bubble - iMessage style colors */}
+                {/* Message bubble - neumorphic / clean styles */}
                 <div
-                    className={`rounded-2xl px-4 py-3 ${isUser
-                        ? 'bg-[#007AFF] text-white rounded-br-md'
-                        : 'bg-[#E9E9EB] dark:bg-[#3A3A3C] text-gray-900 dark:text-gray-100 rounded-bl-md'
+                    className={`rounded-[1.25rem] px-5 py-3.5 mb-1 ${isUser
+                        ? 'bg-indigo-600 text-white rounded-br-md shadow-[0_4px_14px_-4px_rgba(79,70,229,0.3)]'
+                        : 'bg-white dark:bg-[#121212] text-gray-900 dark:text-gray-100 rounded-bl-md shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-gray-100/50 dark:border-gray-800 dark:shadow-[0_2px_10px_-4px_rgba(0,0,0,0.4)]'
                         }`}
                 >
                     <div className={`prose prose-sm max-w-none ${isUser ? 'prose-invert !text-white' : 'dark:prose-invert'}`}>

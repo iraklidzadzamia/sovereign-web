@@ -4,14 +4,23 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Save, Plus, Trash2, GripVertical, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { getAgents, updateAgent, createAgent, deleteAgent, DbAgent } from '@/lib/supabase';
+import { translations, Language } from '@/lib/translations';
 
 export default function AgentsPage() {
     const [agents, setAgents] = useState<DbAgent[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState<string | null>(null);
     const [editingAgent, setEditingAgent] = useState<DbAgent | null>(null);
+    const [uiLanguage, setUiLanguage] = useState<Language>('ru');
+
+    const t = translations[uiLanguage];
 
     useEffect(() => {
+        // Load language from localStorage (synced with main page)
+        const savedLang = localStorage.getItem('roundtable-ui-language') as Language;
+        if (savedLang && translations[savedLang]) {
+            setUiLanguage(savedLang);
+        }
         loadAgents();
     }, []);
 
@@ -40,14 +49,14 @@ export default function AgentsPage() {
             loadAgents();
         } catch (error) {
             console.error('Failed to save agent:', error);
-            alert('Ошибка сохранения');
+            alert(t.saveError);
         } finally {
             setSaving(null);
         }
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('Удалить этого советника?')) return;
+        if (!confirm(t.deleteAgentConfirm)) return;
         try {
             await deleteAgent(id);
             loadAgents();
@@ -59,8 +68,8 @@ export default function AgentsPage() {
     const handleAddNew = async () => {
         try {
             const newAgent = await createAgent({
-                name: 'Новый советник',
-                description: 'Описание...',
+                name: 'New Agent',
+                description: '...',
                 emoji: '🤖',
                 prompt: 'You are a helpful advisor...',
                 sort_order: agents.length + 1,
@@ -90,8 +99,8 @@ export default function AgentsPage() {
                             <ArrowLeft className="w-5 h-5" />
                         </Link>
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900">⚙️ Редактор советников</h1>
-                            <p className="text-sm text-gray-500">Настрой свой круглый стол</p>
+                            <h1 className="text-2xl font-bold text-gray-900">⚙️ {t.agentEditor}</h1>
+                            <p className="text-sm text-gray-500">{t.agentEditorSubtitle}</p>
                         </div>
                     </div>
                     <button
@@ -99,7 +108,7 @@ export default function AgentsPage() {
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700"
                     >
                         <Plus className="w-4 h-4" />
-                        Добавить
+                        {t.addAgent}
                     </button>
                 </div>
 
@@ -126,7 +135,7 @@ export default function AgentsPage() {
                                             value={editingAgent.name}
                                             onChange={(e) => setEditingAgent({ ...editingAgent, name: e.target.value })}
                                             className="flex-1 px-4 py-2 border rounded-lg font-medium"
-                                            placeholder="Имя советника"
+                                            placeholder={t.agentNamePlaceholder}
                                         />
                                     </div>
                                     <input
@@ -134,20 +143,20 @@ export default function AgentsPage() {
                                         value={editingAgent.description}
                                         onChange={(e) => setEditingAgent({ ...editingAgent, description: e.target.value })}
                                         className="w-full px-4 py-2 border rounded-lg text-sm"
-                                        placeholder="Краткое описание роли..."
+                                        placeholder={t.agentDescPlaceholder}
                                     />
                                     <textarea
                                         value={editingAgent.prompt}
                                         onChange={(e) => setEditingAgent({ ...editingAgent, prompt: e.target.value })}
                                         className="w-full h-32 px-4 py-2 border rounded-lg text-sm font-mono"
-                                        placeholder="System prompt для этого советника..."
+                                        placeholder={t.agentPromptPlaceholder}
                                     />
                                     <input
                                         type="text"
                                         value={editingAgent.image_url || ''}
                                         onChange={(e) => setEditingAgent({ ...editingAgent, image_url: e.target.value })}
                                         className="w-full px-4 py-2 border rounded-lg text-sm"
-                                        placeholder="URL аватара (опционально)"
+                                        placeholder={t.agentImagePlaceholder}
                                     />
                                     <div className="flex gap-2">
                                         <button
@@ -160,13 +169,13 @@ export default function AgentsPage() {
                                             ) : (
                                                 <Save className="w-4 h-4" />
                                             )}
-                                            Сохранить
+                                            {t.save}
                                         </button>
                                         <button
                                             onClick={() => setEditingAgent(null)}
                                             className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg"
                                         >
-                                            Отмена
+                                            {t.cancel}
                                         </button>
                                     </div>
                                 </div>
@@ -183,7 +192,7 @@ export default function AgentsPage() {
                                         onClick={() => setEditingAgent(agent)}
                                         className="px-3 py-1 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg"
                                     >
-                                        Редактировать
+                                        {t.edit}
                                     </button>
                                     <button
                                         onClick={() => handleDelete(agent.id)}
@@ -199,7 +208,7 @@ export default function AgentsPage() {
 
                 {agents.length === 0 && (
                     <div className="text-center py-12 text-gray-500">
-                        Нет советников. Нажми "Добавить" чтобы создать первого!
+                        {t.noAgents}
                     </div>
                 )}
             </div>

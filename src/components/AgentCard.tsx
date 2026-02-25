@@ -12,17 +12,8 @@ interface AgentCardProps {
     onClick?: () => void;
 }
 
-// Map of agent IDs to their avatar images
-const AVATAR_IMAGES: Record<string, string> = {
-    socrates: '/avatars/socrates.png',
-    skeptical_buyer: '/avatars/skeptical_buyer.png',
-    shark: '/avatars/shark.png',
-    brutal_operator: '/avatars/brutal_operator.png',
-    black_swan: '/avatars/black_swan.png',
-    futurist: '/avatars/futurist.png',
-    esoteric: '/avatars/esoteric.png',
-    archaeologist: '/avatars/archaeologist.png',
-};
+// Map of agent IDs to their avatar images (empty — using emoji fallback)
+const AVATAR_IMAGES: Record<string, string> = {};
 
 export default function AgentCard({
     id,

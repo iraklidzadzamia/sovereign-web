@@ -4,10 +4,11 @@ import React from 'react';
 
 interface JudgeBubbleProps {
     question: string;
+    moderatorLabel?: string;
     onOptionClick?: (option: string) => void;
 }
 
-export default function JudgeBubble({ question, onOptionClick }: JudgeBubbleProps) {
+export default function JudgeBubble({ question, moderatorLabel = 'Moderator', onOptionClick }: JudgeBubbleProps) {
     return (
         <div className="flex gap-3 mb-4 animate-fade-in">
             {/* Avatar */}
@@ -19,7 +20,7 @@ export default function JudgeBubble({ question, onOptionClick }: JudgeBubbleProp
             <div className="max-w-[80%]">
                 {/* Character name */}
                 <div className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1 ml-1">
-                    Модератор
+                    {moderatorLabel}
                 </div>
 
                 {/* Message bubble with yellow/amber background */}

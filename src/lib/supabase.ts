@@ -1,13 +1,38 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createBrowserClient as createSupabaseBrowserClient } from '@supabase/ssr';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Singleton browser client (carries user session cookies for RLS)
+let browserClient: SupabaseClient | null = null;
+
+function getSupabase(): SupabaseClient {
+    if (typeof window !== 'undefined') {
+        // Client-side: use browser client with auth cookies
+        if (!browserClient) {
+            browserClient = createSupabaseBrowserClient(supabaseUrl, supabaseAnonKey);
+        }
+        return browserClient;
+    }
+    // Server-side fallback (API routes should use supabase-server.ts instead)
+    return createClient(supabaseUrl, supabaseAnonKey);
+}
+
+// Export for direct usage
+export const supabase = typeof window !== 'undefined'
+    ? createSupabaseBrowserClient(supabaseUrl, supabaseAnonKey)
+    : createClient(supabaseUrl, supabaseAnonKey);
+
+// Browser client for 'use client' components (auth, signOut, etc.)
+export function createBrowserSupabaseClient() {
+    return getSupabase();
+}
 
 // Types for database operations
 export interface DbConversation {
     id: string;
+    user_id?: string;
     title: string;
     original_input: string;
     language: string;
@@ -25,11 +50,25 @@ export interface DbMessage {
     created_at: string;
 }
 
+export interface UserProfile {
+    id: string;
+    plan: 'free' | 'pro';
+    messages_used: number;
+    messages_limit: number;
+    total_tokens_used: number;
+    total_cost_usd: number;
+    stripe_customer_id?: string;
+    stripe_subscription_id?: string;
+    plan_expires_at?: string;
+    created_at: string;
+    updated_at: string;
+}
+
 // Conversation operations
-export async function createConversation(title: string, originalInput: string, language: string = 'ru') {
+export async function createConversation(title: string, originalInput: string, language: string = 'ru', userId?: string) {
     const { data, error } = await supabase
         .from('conversations')
-        .insert({ title, original_input: originalInput, language })
+        .insert({ title, original_input: originalInput, language, user_id: userId })
         .select()
         .single();
 
@@ -191,4 +230,66 @@ export async function deleteAgent(id: string) {
         .eq('id', id);
 
     if (error) throw error;
+}
+
+// User profile operations
+export async function getUserProfile(userId: string): Promise<UserProfile | null> {
+    const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+    if (error) return null;
+    return data as UserProfile;
+}
+
+export async function incrementMessagesUsed(userId: string) {
+    const { error } = await supabase.rpc('increment_messages_used', { user_id_input: userId });
+    if (error) {
+        // Fallback: direct update if RPC not available
+        const profile = await getUserProfile(userId);
+        if (profile) {
+            await supabase
+                .from('user_profiles')
+                .update({ messages_used: profile.messages_used + 1, updated_at: new Date().toISOString() })
+                .eq('id', userId);
+        }
+    }
+}
+
+export async function logUsage(
+    userId: string,
+    conversationId: string,
+    promptTokens: number,
+    completionTokens: number,
+    model: string,
+    costUsd: number
+) {
+    const { error } = await supabase
+        .from('usage_log')
+        .insert({
+            user_id: userId,
+            conversation_id: conversationId,
+            prompt_tokens: promptTokens,
+            completion_tokens: completionTokens,
+            total_tokens: promptTokens + completionTokens,
+            model,
+            cost_usd: costUsd,
+        });
+
+    if (error) console.error('Failed to log usage:', error);
+
+    // Update totals in profile
+    const profile = await getUserProfile(userId);
+    if (profile) {
+        await supabase
+            .from('user_profiles')
+            .update({
+                total_tokens_used: profile.total_tokens_used + promptTokens + completionTokens,
+                total_cost_usd: profile.total_cost_usd + costUsd,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', userId);
+    }
 }

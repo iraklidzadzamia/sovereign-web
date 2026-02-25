@@ -64,8 +64,8 @@ const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(
         };
 
         return (
-            <form onSubmit={handleSubmit} className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 p-4">
-                <div className="flex items-end gap-3 max-w-4xl mx-auto">
+            <form onSubmit={handleSubmit} className="border-t border-gray-100 dark:border-gray-800/50 bg-[#fafafa]/80 dark:bg-[#0a0a0c]/80 backdrop-blur-md p-3 sm:p-4">
+                <div className="flex items-end gap-2 sm:gap-3 max-w-4xl mx-auto">
                     <div className="flex-1 relative">
                         <textarea
                             ref={textareaRef}
@@ -75,7 +75,7 @@ const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(
                             placeholder={placeholder || 'Type a message...'}
                             disabled={disabled || loading}
                             rows={1}
-                            className="w-full resize-none rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-4 py-3 pr-12 text-gray-900 dark:text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                            className={`w-full resize-none rounded-[2rem] border-0 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_15px_-3px_rgba(0,0,0,0.3)] bg-white dark:bg-[#121212] px-4 sm:px-6 py-3 sm:py-3.5 text-[14px] sm:text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:shadow-[0_4px_20px_-3px_rgba(79,70,229,0.1)] disabled:opacity-50 disabled:cursor-not-allowed transition-all leading-normal ${!message ? 'whitespace-nowrap overflow-hidden' : ''}`}
                             style={{ minHeight: '48px', maxHeight: '150px' }}
                         />
                     </div>
@@ -83,7 +83,7 @@ const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(
                     <button
                         type="submit"
                         disabled={!message.trim() || disabled || loading}
-                        className="flex-shrink-0 w-12 h-12 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg"
+                        className="flex-shrink-0 w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed transition-all duration-300 shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.23)]"
                     >
                         {loading ? (
                             <Loader2 className="w-5 h-5 animate-spin" />

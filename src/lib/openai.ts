@@ -51,8 +51,9 @@ async function summarizeOldMessages(
     messages: ChatMessage[],
     language: string
 ): Promise<string> {
-    // Create cache key from first few messages
-    const cacheKey = messages.slice(0, 3).map(m => m.content.slice(0, 50)).join('|');
+    // Create cache key — include message count and last message to avoid collisions
+    // between different conversations that start similarly
+    const cacheKey = `${messages.length}:${messages.slice(0, 3).map(m => m.content.slice(0, 50)).join('|')}:${messages[messages.length - 1]?.content.slice(0, 50) || ''}`;
 
     if (summaryCache.has(cacheKey)) {
         console.log('Using cached summary');
@@ -127,7 +128,7 @@ async function prepareHistoryContext(
 /**
  * Build the master system prompt that orchestrates all characters
  */
-function buildMasterPrompt(agents: DbAgent[], language: string): string {
+function buildMasterPrompt(agents: DbAgent[], language: string, lastRespondentsHint: string = ''): string {
     const characterDescriptions = agents.map(agent =>
         `### ${agent.name} (${agent.emoji})
 ${agent.prompt}`
@@ -135,22 +136,33 @@ ${agent.prompt}`
 
     const characterNames = agents.map(a => a.name).join(', ');
 
-    return `You are orchestrating a group chat with ${agents.length} unique characters: ${characterNames}.
+    return `## LANGUAGE (CRITICAL — APPLY TO ALL RESPONSES)
+${getLanguageInstruction(language)}
+
+## IMMERSION RULES (NON-NEGOTIABLE)
+- Characters NEVER acknowledge they are AI, bots, language models, or artificial in any way
+- If a user asks "are you AI?" or "are you a bot?", the character responds IN CHARACTER with their own worldview
+- Each character has their OWN knowledge, opinions, biases, and blind spots. They don't have "general AI knowledge"
+- Characters may disagree with each other — this is encouraged
+- NEVER break the fourth wall. NEVER speak as "the system" or "the orchestrator"
+- There is NO moderator. There is NO system character. ONLY the real characters speak.
+
+You are managing a group chat with ${agents.length} unique characters: ${characterNames}.
 
 ## CHARACTERS:
 
 ${characterDescriptions}
 
-## CRITICAL: DETECT USER INTENT FIRST
+## CRITICAL: DETECT USER INTENT
 
-Before generating responses, you MUST analyze the user's message to detect their INTENT.
+Before generating responses, analyze the user's message to detect their INTENT.
 
 ### 1-ON-1 MODE — ONLY ONE character responds
 
 **Detect 1-on-1 when user:**
 - Addresses a character BY NAME (any language/spelling): "Сократ,", "sokrat", "hey Shark", "Шарк", "оператор"
 - Asks a character DIRECTLY: "что ты думаешь, Сократ?", "Shark what's your take?", "как думаешь sokrat"
-- Uses phrases suggesting private talk: "давай поговорим", "let's talk", "хочу спросить тебя", "поговорим"
+- Uses phrases suggesting private talk: "давай поговорим", "let's talk", "хочу спросить тебя"
 - Continues a conversation with ONE character from context
 
 **Name variations to recognize:**
@@ -173,45 +185,38 @@ Before generating responses, you MUST analyze the user's message to detect their
 - User asks a general question to everyone
 - No specific character is addressed
 - New topic without addressing anyone
+- User says something vague like "привет", "go on", "interesting", "продолжай"
 
-**SMART CONTEXT RULE:**
-If user sends a message without addressing anyone specific (like "kstati pro dengi" or "а что насчёт..."), look at WHO RESPONDED in the last 3-5 messages. Those characters should respond again, as they are part of the ongoing conversation. Don't randomly bring in new characters unless the topic changed significantly.
+**ALWAYS pick the 2-5 MOST RELEVANT characters based on the user's current message topic.**
 
-### CLARIFY MODE — Judge asks for clarification (RARE)
-
-**Use clarify mode ONLY when:**
-- Intent is genuinely ambiguous and could go either way
-- You cannot determine from context who should respond
-- Important decision that user should make explicitly
-
-Return:
-{"mode": "clarify", "clarification_question": "Ты хочешь спросить [X и Y] или всю группу?", "responses": []}
-
-**IMPORTANT: Use clarify mode VERY RARELY. Most cases can be inferred from context.**
+${lastRespondentsHint}
 
 ## OUTPUT FORMAT
 
 You MUST return valid JSON:
 
 {
-  "mode": "1-on-1" | "group" | "clarify",
+  "mode": "1-on-1" | "group",
   "target": "CharacterName" | null,
-  "clarification_question": "..." | null,
   "responses": [
     {"character": "CharacterName", "message": "Their response..."}
   ]
 }
 
+**IMPORTANT: responses array must NEVER be empty. Characters ALWAYS have something to say.**
+
 ## RULES
 
 1. **Intent over keywords**: Understand WHAT the user wants, detect the intent
 2. **Strict 1-on-1**: If you detect 1-on-1 intent, return ONLY that character. No exceptions.
-3. **Smart context**: If no addressee, recent responders continue the conversation
-4. **Natural chat**: Keep responses 1-3 sentences, like real messaging
-5. **Stay in character**: Each character has a unique voice
-6. **Match language**: Respond in user's language
-7. **Clarify rarely**: Only when genuinely ambiguous
-8. **Strict Personas**: When responding as a specific character (e.g. Hitler, Socrates), ADOPT THEIR EXACT WORLDVIEW, VOCABULARY, and BIASES. Do not soften their personality. If they are a villain, be a villain. If they are a book, strict adherence to its principles.` + getLanguageInstruction(language);
+3. **Topic drives selection**: Choose characters based on the CURRENT MESSAGE topic, not just history
+4. **Natural chat**: Keep responses 1-3 sentences, like real messaging. No walls of text.
+5. **UNIQUE VOICES (CRITICAL)**: A reader should be able to guess WHO wrote a response WITHOUT seeing the character name. If two characters sound the same, you have FAILED. Each character has their own rhythm, vocabulary, humor, and way of thinking.
+6. **NO GENERIC RESPONSES**: Never have a character say something generic like "Здравствуйте, что вас интересует?" or "Привет! О чём хотите поговорить?" — each character greets and reacts in their OWN distinctive way as described in their prompt.
+7. **Match language**: All responses in ${LANGUAGE_NAMES[language] || language}
+8. **NEVER empty responses**: If you have no idea who should respond, pick 2-3 characters who are most versatile
+9. **Stay in character ALWAYS**: Each character has a unique voice, worldview, and methodology. NEVER drop character.
+10. **Strict Personas**: When responding as a specific character (e.g. historical figure, book author), ADOPT THEIR EXACT WORLDVIEW, VOCABULARY, and BIASES. Do not soften their personality. Be authentic to who they are.`;
 }
 
 /**
@@ -233,16 +238,21 @@ function formatChatHistory(messages: ChatMessage[]): string {
 export async function groupChat(
     agents: DbAgent[],
     messages: ChatMessage[],
-    language: string = 'ru'
-): Promise<CharacterResponse[]> {
+    language: string = 'ru',
+    model?: string,
+    lastRespondents?: string[]
+): Promise<{ responses: CharacterResponse[]; usage?: { prompt_tokens: number; completion_tokens: number } }> {
     if (messages.length === 0) {
-        return [];
+        return { responses: [] };
     }
 
     const lastUserMessage = messages[messages.length - 1];
 
-    // Build master prompt with intent detection built-in
-    const systemPrompt = buildMasterPrompt(agents, language);
+    // Build master prompt with lastRespondents hint
+    const lastRespondentsHint = lastRespondents && lastRespondents.length > 0
+        ? `**FOLLOW-UP HINT:** The characters who responded last were: ${lastRespondents.join(', ')}. If the user's current message is a vague follow-up (like "go on", "interesting", "продолжай", "а ещё?", "привет") and the topic hasn't clearly changed, prefer these characters. But if the topic shifted to something new, pick whoever is most relevant instead.`
+        : `**FIRST MESSAGE:** Pick 2-4 most relevant characters for this topic.`;
+    const systemPrompt = buildMasterPrompt(agents, language, lastRespondentsHint);
 
     // Prepare history with summarization for long conversations
     const historyContext = await prepareHistoryContext(messages, language);
@@ -258,7 +268,7 @@ export async function groupChat(
     for (let attempt = 0; attempt < 2; attempt++) {
         try {
             const response = await getOpenAI().chat.completions.create({
-                model: MODEL,
+                model: model || MODEL,
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userPrompt },
@@ -268,6 +278,10 @@ export async function groupChat(
             });
 
             const content = response.choices[0].message.content || '{}';
+            const tokenUsage = response.usage ? {
+                prompt_tokens: response.usage.prompt_tokens || 0,
+                completion_tokens: response.usage.completion_tokens || 0,
+            } : undefined;
             console.log('OpenAI raw response:', content.substring(0, 500));
 
             // Parse the response
@@ -321,7 +335,7 @@ export async function groupChat(
             }
 
             console.log('Final responses count:', validated.length);
-            return validated;
+            return { responses: validated, usage: tokenUsage };
 
         } catch (e) {
             lastError = e instanceof Error ? e : new Error(String(e));
@@ -336,10 +350,12 @@ export async function groupChat(
 
     // All retries failed
     console.error('All retry attempts failed:', lastError);
-    return [{
-        character: 'System',
-        message: 'Sorry, I had trouble generating responses. Please try again.'
-    }];
+    return {
+        responses: [{
+            character: 'System',
+            message: 'Sorry, I had trouble generating responses. Please try again.'
+        }]
+    };
 }
 
 /**
@@ -348,8 +364,9 @@ export async function groupChat(
 export async function chatWithSingleAgent(
     agent: DbAgent,
     messages: ChatMessage[],
-    language: string = 'ru'
-): Promise<string> {
+    language: string = 'ru',
+    model?: string
+): Promise<{ text: string; usage?: { prompt_tokens: number; completion_tokens: number } }> {
     const systemPrompt = agent.prompt + `
 
 You are now in a direct conversation. Respond naturally as ${agent.name}.
@@ -361,7 +378,7 @@ Be concise but insightful. Stay in character.` + getLanguageInstruction(language
     }));
 
     const response = await getOpenAI().chat.completions.create({
-        model: MODEL,
+        model: model || MODEL,
         messages: [
             { role: 'system', content: systemPrompt },
             ...formattedMessages,
@@ -369,7 +386,15 @@ Be concise but insightful. Stay in character.` + getLanguageInstruction(language
         max_completion_tokens: 1000,
     });
 
-    return response.choices[0].message.content || '';
+    const tokenUsage = response.usage ? {
+        prompt_tokens: response.usage.prompt_tokens || 0,
+        completion_tokens: response.usage.completion_tokens || 0,
+    } : undefined;
+
+    return {
+        text: response.choices[0].message.content || '',
+        usage: tokenUsage,
+    };
 }
 
 // Legacy exports for backward compatibility during migration

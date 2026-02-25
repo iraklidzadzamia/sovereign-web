@@ -18,11 +18,11 @@ export const translations = {
         // Input Area
         describeIdea: "Describe your idea",
         placeholders: [
-            "Example: I'm facing a tough decision and need advice...",
-            "Example: Analyze my idea from different perspectives...",
-            "Example: I need help resolving a complex situation...",
-            "Example: Critique my plan and point out the risks...",
-            "Example: Help me brainstorm solutions for a problem..."
+            "Ask your board for advice...",
+            "Analyze my idea...",
+            "Help me decide...",
+            "Critique my plan...",
+            "Brainstorm solutions..."
         ],
         startAnalysis: "Start Analysis",
         analyzing: "Analyzing...",
@@ -61,7 +61,40 @@ export const translations = {
         system: "System",
 
         // Judge
-        chatWithJudge: "Chat with Judge"
+        chatWithJudge: "Chat with Judge",
+        moderator: "Moderator",
+
+        // Agents page
+        agentEditor: "Agent Editor",
+        agentEditorSubtitle: "Customize your round table",
+        addAgent: "Add",
+        agentNamePlaceholder: "Agent name",
+        agentDescPlaceholder: "Brief role description...",
+        agentPromptPlaceholder: "System prompt for this agent...",
+        agentImagePlaceholder: "Avatar URL (optional)",
+        deleteAgentConfirm: "Delete this advisor?",
+        noAgents: "No advisors. Click \"Add\" to create your first!",
+        characters: "characters",
+
+        // Auth
+        login: "Sign In",
+        signup: "Sign Up",
+        logout: "Log Out",
+        emailLabel: "Email",
+        passwordLabel: "Password",
+        googleLogin: "Continue with Google",
+        orContinueWith: "or",
+        loginError: "Login failed. Please try again.",
+        signupSuccess: "Check your email to confirm your account!",
+        alreadyHaveAccount: "Already have an account? Sign in",
+        dontHaveAccount: "Don't have an account? Sign up",
+        appSubtitle: "Your AI Board of Advisors",
+
+        // Paywall
+        messageLimitReached: "You've used all your free messages",
+        upgradeToPro: "Upgrade to PRO",
+        messagesRemaining: "messages remaining",
+        unlimitedMessages: "Unlimited messages",
     },
     ru: {
         // Sidebar & Header
@@ -74,11 +107,11 @@ export const translations = {
         // Input Area
         describeIdea: "Опиши свою идею",
         placeholders: [
-            "Например: Стою перед сложным выбором и нужен совет...",
-            "Например: Проанализируйте мою идею с разных сторон...",
-            "Например: Нужна помощь в разрешении сложной ситуации...",
-            "Например: Критически оцените мой план и укажите риски...",
-            "Например: Помогите найти нестандартное решение проблемы..."
+            "Посоветуйтесь с бордом...",
+            "Проанализируй мою идею...",
+            "Помоги принять решение...",
+            "Критически оцени мой план...",
+            "Давайте найдем решение..."
         ],
         startAnalysis: "Запустить анализ",
         analyzing: "Анализируем...",
@@ -117,7 +150,40 @@ export const translations = {
         system: "Системная",
 
         // Judge
-        chatWithJudge: "Чат с Судьёй"
+        chatWithJudge: "Чат с Судьёй",
+        moderator: "Модератор",
+
+        // Agents page
+        agentEditor: "Редактор советников",
+        agentEditorSubtitle: "Настрой свой круглый стол",
+        addAgent: "Добавить",
+        agentNamePlaceholder: "Имя советника",
+        agentDescPlaceholder: "Краткое описание роли...",
+        agentPromptPlaceholder: "System prompt для этого советника...",
+        agentImagePlaceholder: "URL аватара (опционально)",
+        deleteAgentConfirm: "Удалить этого советника?",
+        noAgents: "Нет советников. Нажми \"Добавить\" чтобы создать первого!",
+        characters: "персонажей",
+
+        // Auth
+        login: "Войти",
+        signup: "Регистрация",
+        logout: "Выйти",
+        emailLabel: "Email",
+        passwordLabel: "Пароль",
+        googleLogin: "Войти через Google",
+        orContinueWith: "или",
+        loginError: "Ошибка входа. Попробуйте ещё раз.",
+        signupSuccess: "Проверьте email для подтверждения аккаунта!",
+        alreadyHaveAccount: "Уже есть аккаунт? Войти",
+        dontHaveAccount: "Нет аккаунта? Зарегистрироваться",
+        appSubtitle: "Ваш ИИ-совет директоров",
+
+        // Paywall
+        messageLimitReached: "Вы использовали все бесплатные сообщения",
+        upgradeToPro: "Перейти на PRO",
+        messagesRemaining: "сообщений осталось",
+        unlimitedMessages: "Безлимитные сообщения",
     },
     ka: {
         // Sidebar & Header
@@ -130,11 +196,11 @@ export const translations = {
         // Input Area
         describeIdea: "აღწერეთ თქვენი იდეა",
         placeholders: [
-            "მაგალითად: რთული გადაწყვეტილების წინაშე ვდგავარ...",
-            "მაგალითად: გააანალიზეთ ჩემი იდეა სხვადასხვა კუთხით...",
-            "მაგალითად: მჭირდება დახმარება რთული სიტუაციის მოგვარებაში...",
-            "მაგალითად: შეაფასეთ ჩემი გეგმა და მიუთითეთ რისკები...",
-            "მაგალითად: დამეხმარეთ პრობლემის გადაჭრის გზების მოძიებაში..."
+            "სთხოვეთ რჩევა საბჭოს...",
+            "გააანალიზეთ ჩემი იდეა...",
+            "დამეხმარეთ გადაწყვეტილებაში...",
+            "შეაფასეთ ჩემი გეგმა...",
+            "ვიპოვოთ გამოსავალი..."
         ],
         startAnalysis: "ანალიზის დაწყება",
         analyzing: "მუშავდება...",
@@ -173,6 +239,39 @@ export const translations = {
         system: "სისტემური",
 
         // Judge
-        chatWithJudge: "მოსამართლესთან ჩატი"
+        chatWithJudge: "მოსამართლესთან ჩატი",
+        moderator: "მოდერატორი",
+
+        // Agents page
+        agentEditor: "მრჩეველთა რედაქტორი",
+        agentEditorSubtitle: "მოარგეთ თქვენი მრგვალი მაგიდა",
+        addAgent: "დამატება",
+        agentNamePlaceholder: "მრჩეველის სახელი",
+        agentDescPlaceholder: "როლის მოკლე აღწერა...",
+        agentPromptPlaceholder: "ამ მრჩეველის სისტემური მითითება...",
+        agentImagePlaceholder: "ავატარის URL (არასავალდებულო)",
+        deleteAgentConfirm: "წავშალოთ ეს მრჩეველი?",
+        noAgents: "მრჩეველები არ არის. დააჭირეთ \"დამატებას\" პირველის შესაქმნელად!",
+        characters: "პერსონაჟი",
+
+        // Auth
+        login: "შესვლა",
+        signup: "რეგისტრაცია",
+        logout: "გასვლა",
+        emailLabel: "ელფოსტა",
+        passwordLabel: "პაროლი",
+        googleLogin: "Google-ით შესვლა",
+        orContinueWith: "ან",
+        loginError: "შესვლის შეცდომა. სცადეთ ხელახლა.",
+        signupSuccess: "შეამოწმეთ ელფოსტა ანგარიშის დასადასტურებლად!",
+        alreadyHaveAccount: "უკვე გაქვთ ანგარიში? შესვლა",
+        dontHaveAccount: "არ გაქვთ ანგარიში? რეგისტრაცია",
+        appSubtitle: "თქვენი AI მრჩეველთა საბჭო",
+
+        // Paywall
+        messageLimitReached: "თქვენ გამოიყენეთ ყველა უფასო შეტყობინება",
+        upgradeToPro: "PRO-ზე გადასვლა",
+        messagesRemaining: "შეტყობინება დარჩა",
+        unlimitedMessages: "ულიმიტო შეტყობინებები",
     }
 };

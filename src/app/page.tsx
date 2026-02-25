@@ -18,13 +18,17 @@ import {
   createAgent,
   deleteAgent,
   DbAgent,
-  DbConversation
+  DbConversation,
+  UserProfile,
+  getUserProfile,
+  createBrowserSupabaseClient,
 } from '@/lib/supabase';
 import SettingsDropdown from '@/components/SettingsDropdown';
 import ChatBubble from '@/components/ChatBubble';
 import ChatInput, { ChatInputRef } from '@/components/ChatInput';
 import TypingIndicator from '@/components/TypingIndicator';
 import AgentEditor from '@/components/AgentEditor';
+import PaywallBanner from '@/components/PaywallBanner';
 import { translations, Language } from '@/lib/translations';
 
 interface Message {
@@ -56,6 +60,7 @@ export default function Home() {
   const [uiLanguage, setUiLanguage] = useState<Language>('ru');
   const [language, setLanguage] = useState('ru');
   const [theme, setTheme] = useState('system');
+  const [model, setModel] = useState('gpt-4o');
 
   // Agents state
   const [agents, setAgents] = useState<DbAgent[]>([]);
@@ -66,21 +71,35 @@ export default function Home() {
   const [showAgentEditor, setShowAgentEditor] = useState(false);
   const [editorMode, setEditorMode] = useState<'create' | 'edit'>('create');
 
+  // Auth state
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [limitReached, setLimitReached] = useState(false);
+  const [lastRespondents, setLastRespondents] = useState<string[]>([]);
+
   // Random placeholder logic
   const [placeholderText, setPlaceholderText] = useState('');
 
   // Localization map for default characters
   const CHARACTER_TRANSLATIONS: Record<string, Record<string, string>> = {
+    'Elon Musk': { ru: 'Илон Маск', ka: 'ილონ მასკი' },
     'Socrates': { ru: 'Сократ', ka: 'სოკრატე' },
-    'Shark': { ru: 'Акула Бизнеса', ka: 'ბიზნეს ზვიგენი' },
-    'Futurist': { ru: 'Футурист', ka: 'ფუტურისტი' },
-    'Skeptic': { ru: 'Скептик', ka: 'სკეპტიკოსი' },
-    'Operator': { ru: 'Оператор', ka: 'ოპერატორი' },
-    'Black Swan': { ru: 'Черный Лебедь', ka: 'შავი გედი' },
-    'Storyteller': { ru: 'Рассказчик', ka: 'მთხრობელი' },
-    'Archaeologist': { ru: 'Археолог', ka: 'არქეოლოგი' },
-    'Guardian': { ru: 'Хранитель', ka: 'მცველი' },
-    'Broker': { ru: 'Брокер', ka: 'ბროკერი' },
+    'Donald Trump': { ru: 'Дональд Трамп', ka: 'დონალდ ტრამპი' },
+    'Nietzsche': { ru: 'Ницше', ka: 'ნიცშე' },
+    'Carl Jung': { ru: 'Карл Юнг', ka: 'კარლ იუნგი' },
+    'Robert Kiyosaki': { ru: 'Роберт Кийосаки', ka: 'რობერტ კიიოსაკი' },
+    'Doctor': { ru: 'Доктор', ka: 'ექიმი' },
+    'Bible': { ru: 'Библия', ka: 'ბიბლია' },
+    '$100M Offers': { ru: '$100M Offers', ka: '$100M Offers' },
+    '48 Laws of Power': { ru: '48 Законов Власти', ka: 'ძალაუფლების 48 კანონი' },
+  };
+
+  // Locale map for timestamps (bug #10 fix)
+  const LOCALE_MAP: Record<string, string> = {
+    ru: 'ru-RU',
+    en: 'en-US',
+    ka: 'ka-GE',
+    de: 'de-DE',
   };
 
   const getLocalizedName = (name: string) => {
@@ -128,6 +147,17 @@ export default function Home() {
 
   // Load data on mount
   useEffect(() => {
+    // Get current user session
+    const supabase = createBrowserSupabaseClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        setUserId(user.id);
+        getUserProfile(user.id).then(profile => {
+          if (profile) setUserProfile(profile);
+        });
+      }
+    });
+
     loadConversations();
     loadAgents();
   }, []);
@@ -228,7 +258,7 @@ export default function Home() {
     if (!convId) {
       try {
         const title = messageText.slice(0, 50) + (messageText.length > 50 ? '...' : '');
-        const conversation = await createConversation(title, messageText, language);
+        const conversation = await createConversation(title, messageText, language, userId || undefined);
         convId = conversation.id;
         setCurrentConversationId(convId);
         loadConversations();
@@ -244,7 +274,7 @@ export default function Home() {
       id: Date.now().toString(),
       role: 'user',
       content: messageText,
-      timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString(LOCALE_MAP[uiLanguage] || 'ru-RU', { hour: '2-digit', minute: '2-digit' })
     };
     setMessages(prev => [...prev, userMessage]);
 
@@ -266,16 +296,24 @@ export default function Home() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages, language }),
+        body: JSON.stringify({ messages: apiMessages, language, model, conversationId: currentConversationId, lastRespondents }),
       });
       const data = await res.json();
 
       if (data.error) {
+        if (data.error === 'limit_reached') {
+          setLimitReached(true);
+          setLoading(false);
+          return;
+        }
         throw new Error(data.error);
       }
 
       // Add each character's response with staggered timing for realistic effect
       const responses = data.responses || [];
+
+      // Track who responded for next round
+      setLastRespondents(responses.map((r: { character: string }) => r.character));
 
       for (let i = 0; i < responses.length; i++) {
         const response = responses[i];
@@ -292,7 +330,7 @@ export default function Home() {
         // Hide typing indicator and add the message
         setTypingCharacter(null);
 
-        const timestamp = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const timestamp = new Date().toLocaleTimeString(LOCALE_MAP[uiLanguage] || 'ru-RU', { hour: '2-digit', minute: '2-digit' });
         const assistantMessage: Message = {
           id: Date.now().toString() + '-' + response.character,
           role: 'assistant',
@@ -321,7 +359,7 @@ export default function Home() {
         content: `❌ Error: ${error instanceof Error ? error.message : 'Failed to get response'}`,
         character: 'System',
         emoji: '⚠️',
-        timestamp: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString(LOCALE_MAP[uiLanguage] || 'ru-RU', { hour: '2-digit', minute: '2-digit' })
       }]);
     } finally {
       setLoading(false);
@@ -332,6 +370,7 @@ export default function Home() {
   const handleNewConversation = () => {
     setMessages([]);
     setCurrentConversationId(null);
+    setLastRespondents([]);
     setSidebarOpen(false);
   };
 
@@ -347,9 +386,9 @@ export default function Home() {
           id: m.id,
           role: m.role as 'user' | 'assistant',
           content: m.content,
-          character: m.agent_id ? agents.find(a => a.id === m.agent_id)?.name : undefined,
-          emoji: m.agent_id ? agents.find(a => a.id === m.agent_id)?.emoji : undefined,
-          timestamp: new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+          character: m.agent_id ? (agents.find(a => a.id === m.agent_id || a.name.toLowerCase() === m.agent_id))?.name : undefined,
+          emoji: m.agent_id ? (agents.find(a => a.id === m.agent_id || a.name.toLowerCase() === m.agent_id))?.emoji : undefined,
+          timestamp: new Date(m.created_at).toLocaleTimeString(LOCALE_MAP[uiLanguage] || 'ru-RU', { hour: '2-digit', minute: '2-digit' })
         }));
 
       setMessages(uiMessages);
@@ -384,7 +423,7 @@ export default function Home() {
 
   // Sidebar component
   const Sidebar = () => (
-    <div className={`fixed inset-y-0 left-0 z-50 w-72 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static`}>
+    <div className={`fixed inset-y-0 left-0 z-50 w-72 bg-white/90 dark:bg-gray-950/90 backdrop-blur-xl border-r border-gray-100 dark:border-gray-800/50 shadow-[4px_0_24px_-8px_rgba(0,0,0,0.03)] dark:shadow-[4px_0_24px_-8px_rgba(0,0,0,0.3)] transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static`}>
       <div className="flex flex-col h-full">
         {/* Header */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
@@ -398,10 +437,10 @@ export default function Home() {
         </div>
 
         {/* New conversation button */}
-        <div className="p-3">
+        <div className="p-4">
           <button
             onClick={handleNewConversation}
-            className="w-full flex items-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 transition-all duration-300 shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.23)] hover:-translate-y-0.5 font-medium"
           >
             <Plus className="w-5 h-5" />
             {t.newAnalysis}
@@ -484,7 +523,7 @@ export default function Home() {
             className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
           >
             <Users className="w-4 h-4" />
-            <span>{agents.length} персонажей</span>
+            <span>{agents.length} {t.characters}</span>
             <Edit className="w-3 h-3 ml-auto" />
           </Link>
         </div>
@@ -494,38 +533,54 @@ export default function Home() {
 
   // Welcome screen when no messages
   const WelcomeScreen = () => (
-    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-      <div className="text-6xl mb-4">🏰</div>
-      <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-        RoundTable
-      </h1>
-      <p className="text-gray-500 dark:text-gray-400 mb-8 max-w-md">
-        {t.subtitle}
-      </p>
+    <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 text-center bg-gray-50/30 dark:bg-transparent overflow-y-auto min-h-[500px]">
 
-      {/* Show agents - clickable to insert @mention OR edit */}
-      <div className="flex flex-wrap justify-center gap-3 mb-8">
+      {/* Header Section - Pushed down to center specifically on phones */}
+      <div className="flex flex-col items-center justify-center mb-8 mt-10 sm:mt-0">
+        <div className="text-[4rem] sm:text-6xl mb-4 sm:mb-5 drop-shadow-sm scale-110">🏰</div>
+        <h1 className="text-[2.75rem] sm:text-5xl font-black tracking-tighter text-gray-900 dark:text-gray-50 mb-2 sm:mb-3">
+          RoundTable
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 max-w-[280px] sm:max-w-md text-[14px] sm:text-base leading-snug">
+          {t.subtitle}
+        </p>
+      </div>
+
+      {/* Show agents - clickable to insert @mention OR edit 
+          Uses a structured flex layout to wrap gracefully.
+      */}
+      <div className="flex flex-wrap justify-center content-center gap-2.5 sm:gap-3.5 mb-8 w-full max-w-[500px] sm:max-w-3xl relative px-1 sm:px-2">
         {agents.map(agent => (
           <button
             key={agent.id}
             onClick={() => isEditingMode ? openEditAgentEditor(agent) : insertMention(agent.name)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm transition-all cursor-pointer relative group ${isEditingMode
-              ? 'bg-indigo-50 dark:bg-indigo-900/30 ring-1 ring-indigo-500 hover:bg-indigo-100'
-              : 'bg-gray-100 dark:bg-gray-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 hover:scale-105'
+            className={`flex items-center gap-2 sm:gap-3 pr-3.5 pl-2 sm:pr-6 sm:pl-3.5 py-1.5 sm:py-2.5 rounded-full text-[13px] sm:text-sm font-medium transition-all duration-300 cursor-pointer relative group flex-shrink-0 ${isEditingMode
+              ? 'bg-indigo-50 dark:bg-[#18181b] ring-2 ring-indigo-500 hover:bg-indigo-100 dark:hover:bg-[#27272a]'
+              : 'bg-white dark:bg-[#121212] border border-gray-100 dark:border-gray-800/80 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_16px_-4px_rgba(0,0,0,0.4)] hover:shadow-[0_6px_20px_-4px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_6px_24px_-4px_rgba(0,0,0,0.5)] hover:-translate-y-0.5 hover:border-indigo-100 dark:hover:border-indigo-900/50'
               }`}
+            style={{ maxWidth: '100%' }} // Prevents blowout on tiny screens
           >
-            <span>{agent.emoji}</span>
-            <span className="text-gray-700 dark:text-gray-300">{getLocalizedName(agent.name)}</span>
-            {isEditingMode && (
-              <Pencil className="w-3 h-3 ml-1 text-indigo-500" />
-            )}
+            <span className="text-[14px] sm:text-base bg-gray-50 dark:bg-gray-800/80 p-1 sm:p-1.5 rounded-full transform group-hover:scale-110 transition-transform flex-shrink-0 leading-none flex items-center justify-center w-6 h-6 sm:w-8 sm:h-8">
+              {agent.emoji}
+            </span>
+            <span className="text-gray-700 dark:text-gray-200 truncate pr-1 sm:pr-3">
+              {getLocalizedName(agent.name)}
+            </span>
+
+            {/* The pencil is always in the DOM but hidden unless editing, preventing layout shifts */}
+            <div className={`absolute right-1.5 sm:right-3 top-1/2 -translate-y-1/2 transition-opacity duration-300 ${isEditingMode ? 'opacity-100' : 'opacity-0'}`}>
+              <Pencil className="w-3.5 h-3.5 text-indigo-500 drop-shadow-sm" />
+            </div>
           </button>
         ))}
+      </div>
 
+      {/* Add Character button row (separate from the main grid to avoid pushing elements) */}
+      <div className={`flex justify-center h-10 sm:h-12 w-full transition-all duration-300 ${isEditingMode ? 'opacity-100 mb-6' : 'opacity-0 mb-0 overflow-hidden h-0'}`}>
         {isEditingMode && (
           <button
             onClick={openNewAgentEditor}
-            className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 dark:border-gray-700 rounded-full text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-all text-gray-500"
+            className="flex items-center gap-2 px-5 sm:px-6 py-2 sm:py-2.5 border-2 border-dashed border-indigo-200 dark:border-indigo-900/50 rounded-full text-[13px] sm:text-sm font-medium bg-indigo-50/50 dark:bg-indigo-900/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-all shadow-sm"
           >
             <Plus className="w-4 h-4" />
             <span>Add Character</span>
@@ -533,36 +588,37 @@ export default function Home() {
         )}
       </div>
 
-      <div className="flex justify-center mb-6 mt-4">
+      {/* Footer Controls */}
+      <div className="flex flex-col items-center mt-2 pb-6 sm:pb-0">
         <button
           onClick={() => setIsEditingMode(!isEditingMode)}
-          className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${isEditingMode
-            ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'
-            : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/10 dark:text-indigo-400 dark:hover:bg-indigo-900/20'
+          className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 mb-4 rounded-full text-[13px] sm:text-sm font-medium transition-all duration-300 ${isEditingMode
+            ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-600/30'
+            : 'bg-white dark:bg-[#121212] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-800 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] hover:shadow-[0_4px_12px_-2px_rgba(0,0,0,0.1)] hover:border-gray-300 dark:hover:border-gray-700'
             }`}
         >
           {isEditingMode ? (
             <>
-              <Check className="w-3 h-3" />
+              <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               Done Editing
             </>
           ) : (
             <>
-              <Settings className="w-3 h-3" />
+              <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               Customize Characters
             </>
           )}
         </button>
-      </div>
 
-      <p className="text-sm text-gray-400 dark:text-gray-500">
-        Start typing below to chat with the group
-      </p>
+        <p className="text-[13px] sm:text-sm text-gray-400 dark:text-gray-500 px-4">
+          Start typing below to chat with the group
+        </p>
+      </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 flex">
+    <div className="min-h-screen bg-[#fafafa] dark:bg-[#0a0a0c] flex">
       <Sidebar />
 
       {/* Overlay for mobile */}
@@ -588,12 +644,17 @@ export default function Home() {
           <SettingsDropdown
             uiLanguage={uiLanguage}
             language={language}
-            model="gpt-4o"
+            model={model}
             theme={theme}
             onUiLanguageChange={(l) => { setUiLanguage(l); localStorage.setItem('roundtable-ui-language', l); }}
             onLanguageChange={(l) => { setLanguage(l); localStorage.setItem('roundtable-language', l); }}
-            onModelChange={() => { }}
+            onModelChange={(m) => { setModel(m); localStorage.setItem('roundtable-model', m); }}
             onThemeChange={(t) => { setTheme(t); localStorage.setItem('roundtable-theme', t); }}
+            onLogout={async () => {
+              const supabase = createBrowserSupabaseClient();
+              await supabase.auth.signOut();
+              window.location.href = '/login';
+            }}
           />
         </div>
 
@@ -625,13 +686,22 @@ export default function Home() {
           )}
         </div>
 
-        {/* Input */}
-        <ChatInput
-          ref={chatInputRef}
-          onSend={handleSend}
-          loading={loading}
-          placeholder={placeholderText}
-        />
+        {/* Input or Paywall */}
+        {limitReached ? (
+          <PaywallBanner
+            messagesUsed={userProfile?.messages_used || 15}
+            messagesLimit={userProfile?.messages_limit || 15}
+            messageLimitReached={t.messageLimitReached}
+            upgradeToPro={t.upgradeToPro}
+          />
+        ) : (
+          <ChatInput
+            ref={chatInputRef}
+            onSend={handleSend}
+            loading={loading}
+            placeholder={placeholderText}
+          />
+        )}
       </div>
       <AgentEditor
         isOpen={showAgentEditor}

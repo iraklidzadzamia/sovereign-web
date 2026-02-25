@@ -41,3 +41,25 @@ CREATE POLICY "Allow all access to conversations" ON conversations
 
 CREATE POLICY "Allow all access to messages" ON messages
   FOR ALL USING (true) WITH CHECK (true);
+
+-- Agents table (for AI characters)
+CREATE TABLE IF NOT EXISTS agents (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  name TEXT NOT NULL,
+  emoji TEXT NOT NULL DEFAULT '🤖',
+  description TEXT NOT NULL DEFAULT '',
+  prompt TEXT NOT NULL DEFAULT '',
+  image_url TEXT,
+  stats JSONB,
+  is_active BOOLEAN DEFAULT true,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Enable RLS on agents
+ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
+
+-- Allow public access for now (for development)
+CREATE POLICY "Allow all access to agents" ON agents
+  FOR ALL USING (true) WITH CHECK (true);

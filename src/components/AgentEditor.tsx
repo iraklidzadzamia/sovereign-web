@@ -167,9 +167,9 @@ export default function AgentEditor({ agent, isOpen, onClose, onSave, onDelete }
     ];
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl border border-gray-200 dark:border-gray-800">
-                <div className="p-6">
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in">
+            <div className="bg-white dark:bg-[#121212] rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 dark:border-gray-800/50">
+                <div className="p-8">
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                             {agent ? 'Edit Character' : 'New Character'}

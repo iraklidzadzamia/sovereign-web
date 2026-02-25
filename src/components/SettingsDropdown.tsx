@@ -25,6 +25,7 @@ interface SettingsDropdownProps {
     onLanguageChange: (lang: string) => void;
     onModelChange: (model: string) => void;
     onThemeChange: (theme: string) => void;
+    onLogout?: () => void;
 }
 
 export default function SettingsDropdown({
@@ -36,6 +37,7 @@ export default function SettingsDropdown({
     onLanguageChange,
     onModelChange,
     onThemeChange,
+    onLogout,
 }: SettingsDropdownProps) {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -100,8 +102,8 @@ export default function SettingsDropdown({
                                         setIsOpen(false);
                                     }}
                                     className={`flex flex-col items-center justify-center gap-1.5 p-2 rounded-lg text-xs font-medium transition-all ${uiLanguage === lang.code
-                                            ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500/20'
-                                            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:scale-105 transform'
+                                        ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-500/20'
+                                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:scale-105 transform'
                                         }`}
                                 >
                                     <span className="text-xl">{lang.flag}</span>
@@ -194,6 +196,18 @@ export default function SettingsDropdown({
                             ))}
                         </div>
                     </div>
+
+                    {/* Logout */}
+                    {onLogout && (
+                        <div className="border-t border-gray-100 dark:border-gray-700 pt-2 mt-2">
+                            <button
+                                onClick={() => { onLogout(); setIsOpen(false); }}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            >
+                                {t.logout}
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
