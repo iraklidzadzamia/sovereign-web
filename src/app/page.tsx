@@ -589,7 +589,7 @@ export default function Home() {
       </div>
 
       {/* Footer Controls */}
-      <div className="flex flex-col items-center mt-2 pb-6 sm:pb-0">
+      <div className="flex flex-col items-center mt-2 pb-28 sm:pb-12">
         <button
           onClick={() => setIsEditingMode(!isEditingMode)}
           className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 mb-4 rounded-full text-[13px] sm:text-sm font-medium transition-all duration-300 ${isEditingMode
