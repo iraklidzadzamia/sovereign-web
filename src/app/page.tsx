@@ -533,15 +533,15 @@ export default function Home() {
 
   // Welcome screen when no messages
   const WelcomeScreen = () => (
-    <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 text-center bg-gray-50/30 dark:bg-transparent overflow-y-auto min-h-[500px]">
+    <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 text-center bg-gray-50/30 dark:bg-transparent overflow-y-auto">
 
-      {/* Header Section - Pushed down to center specifically on phones */}
-      <div className="flex flex-col items-center justify-center mb-8 mt-10 sm:mt-0">
-        <div className="text-[4rem] sm:text-6xl mb-4 sm:mb-5 drop-shadow-sm scale-110">🏰</div>
-        <h1 className="text-[2.75rem] sm:text-5xl font-black tracking-tighter text-gray-900 dark:text-gray-50 mb-2 sm:mb-3">
+      {/* Header Section - Tightened margins for mobile */}
+      <div className="flex flex-col items-center justify-center mb-5 sm:mb-8 mt-2 sm:mt-0">
+        <div className="text-5xl sm:text-6xl mb-3 sm:mb-5 drop-shadow-sm">🏰</div>
+        <h1 className="text-[2.25rem] sm:text-5xl font-black tracking-tighter text-gray-900 dark:text-gray-50 mb-1 sm:mb-3">
           RoundTable
         </h1>
-        <p className="text-gray-500 dark:text-gray-400 max-w-[280px] sm:max-w-md text-[14px] sm:text-base leading-snug">
+        <p className="text-gray-500 dark:text-gray-400 max-w-[280px] sm:max-w-md text-[13px] sm:text-base leading-snug">
           {t.subtitle}
         </p>
       </div>
@@ -549,7 +549,7 @@ export default function Home() {
       {/* Show agents - clickable to insert @mention OR edit 
           Uses a structured flex layout to wrap gracefully.
       */}
-      <div className="flex flex-wrap justify-center content-center gap-2.5 sm:gap-3.5 mb-8 w-full max-w-[500px] sm:max-w-3xl relative px-1 sm:px-2">
+      <div className="flex flex-wrap justify-center content-center gap-2 sm:gap-3.5 mb-5 sm:mb-8 w-full max-w-[500px] sm:max-w-3xl relative px-1 sm:px-2">
         {agents.map(agent => (
           <button
             key={agent.id}
@@ -589,10 +589,10 @@ export default function Home() {
       </div>
 
       {/* Footer Controls */}
-      <div className="flex flex-col items-center mt-2 pb-28 sm:pb-12">
+      <div className="flex flex-col items-center mt-0 pb-2 sm:pb-0">
         <button
           onClick={() => setIsEditingMode(!isEditingMode)}
-          className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 mb-4 rounded-full text-[13px] sm:text-sm font-medium transition-all duration-300 ${isEditingMode
+          className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 mb-3 sm:mb-4 rounded-full text-[13px] sm:text-sm font-medium transition-all duration-300 ${isEditingMode
             ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-600/30'
             : 'bg-white dark:bg-[#121212] text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-800 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05)] hover:shadow-[0_4px_12px_-2px_rgba(0,0,0,0.1)] hover:border-gray-300 dark:hover:border-gray-700'
             }`}
@@ -610,7 +610,7 @@ export default function Home() {
           )}
         </button>
 
-        <p className="text-[13px] sm:text-sm text-gray-400 dark:text-gray-500 px-4">
+        <p className="text-[12px] sm:text-sm text-gray-400 dark:text-gray-500 px-4">
           Start typing below to chat with the group
         </p>
       </div>
