@@ -618,7 +618,7 @@ export default function Home() {
   );
 
   return (
-    <div className="min-h-screen bg-[#fafafa] dark:bg-[#0a0a0c] flex">
+    <div className="min-h-[100dvh] bg-[#fafafa] dark:bg-[#0a0a0c] flex">
       <Sidebar />
 
       {/* Overlay for mobile */}
@@ -627,7 +627,7 @@ export default function Home() {
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col h-screen">
+      <div className="flex-1 flex flex-col h-[100dvh]">
         {/* Header */}
         <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">

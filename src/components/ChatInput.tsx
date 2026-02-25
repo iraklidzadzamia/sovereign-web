@@ -64,7 +64,11 @@ const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(
         };
 
         return (
-            <form onSubmit={handleSubmit} className="border-t border-gray-100 dark:border-gray-800/50 bg-[#fafafa]/80 dark:bg-[#0a0a0c]/80 backdrop-blur-md p-3 sm:p-4">
+            <form
+                onSubmit={handleSubmit}
+                className="border-t border-gray-100 dark:border-gray-800/50 bg-[#fafafa]/80 dark:bg-[#0a0a0c]/80 backdrop-blur-md px-3 pt-3 sm:px-4 sm:pt-4"
+                style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+            >
                 <div className="flex items-end gap-2 sm:gap-3 max-w-4xl mx-auto">
                     <div className="flex-1 relative">
                         <textarea
